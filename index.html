@@ -1,0 +1,28 @@
+<!doctype html>
+<html lang="en-CA">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <title>Tokens · Remy Post</title>
+    <meta name="description" content="How much Claude Remy Post uses: Claude Code token counts and plan limits, updated twice a day." />
+    <!-- Public for people, closed to crawlers (the server sends the same as X-Robots-Tag). -->
+    <meta name="robots" content="noindex, nofollow, noarchive, nosnippet, noimageindex, noai, noimageai" />
+    <meta name="color-scheme" content="light dark" />
+    <meta name="theme-color" media="(prefers-color-scheme: light)" content="#f6f1e7" />
+    <meta name="theme-color" media="(prefers-color-scheme: dark)" content="#17140f" />
+    <meta name="referrer" content="strict-origin-when-cross-origin" />
+    <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+    <link rel="preload" href="/data/usage.json" as="fetch" crossorigin="anonymous" />
+  </head>
+  <body>
+    <!-- Honeypot: invisible to people and disallowed in robots.txt; the server drops anything that follows it. -->
+    <a href="/archive/" rel="nofollow" hidden tabindex="-1" aria-hidden="true">archive</a>
+    <div id="app"></div>
+    <noscript>
+      <p>
+        This page draws its charts with JavaScript. The raw numbers are at <a href="/data/usage.json">/data/usage.json</a>.
+      </p>
+    </noscript>
+    <script type="module" src="/src/main.jsx"></script>
+  </body>
+</html>

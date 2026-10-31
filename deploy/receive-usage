@@ -1,0 +1,19 @@
+#!/bin/bash
+# Installed on the VM as ~/bin/receive-tokens-usage. Reads usage.json on stdin, refuses anything
+# that isn't a small, valid v1 usage file, then swaps it in atomically.
+set -euo pipefail
+DIR=/home/ubuntu/sites/tokens/data
+mkdir -p "$DIR"
+TMP=$(mktemp "$DIR/.usage.XXXXXX")
+trap 'rm -f "$TMP"' EXIT
+head -c 2000000 > "$TMP"
+python3 -I - "$TMP" <<'PY'
+import json, sys
+d = json.load(open(sys.argv[1]))
+assert d.get("v") == 1, "not a v1 usage file"
+assert isinstance(d.get("days"), list) and isinstance(d.get("totals"), list), "missing days/totals"
+PY
+chmod 644 "$TMP"
+mv -f "$TMP" "$DIR/usage.json"
+trap - EXIT
+echo "usage.json updated ($(wc -c < "$DIR/usage.json") bytes)"

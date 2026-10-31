@@ -1,0 +1,16 @@
+#!/bin/bash
+# Installed on the VM as ~/bin/publish-tokens. Reads a gzipped tarball of apps/tokens/dist on stdin,
+# unpacks it into a new release and atomically repoints "current" at it. Keeps 5 releases.
+set -euo pipefail
+ROOT=/home/ubuntu/sites/tokens
+NAME=$(date -u +%Y%m%d-%H%M%S)
+REL="$ROOT/releases/$NAME"
+mkdir -p "$REL" "$ROOT/data"
+head -c 20000000 | tar -xz -C "$REL" --no-same-owner --no-same-permissions
+if [ ! -f "$REL/index.html" ]; then rm -rf "$REL"; echo "no index.html in upload" >&2; exit 1; fi
+chmod -R a+rX "$REL"
+# Relative link so it also resolves inside the Caddy container (/srv/sites/...).
+ln -sfn "releases/$NAME" "$ROOT/current.tmp"
+mv -Tf "$ROOT/current.tmp" "$ROOT/current"
+ls -1dt "$ROOT"/releases/*/ | tail -n +6 | xargs -r rm -rf
+echo "published $NAME"

@@ -1,0 +1,4 @@
+node_modules
+dist
+# Real usage numbers are produced locally and shipped by scripts/usage-ship.sh, never committed.
+public/data/

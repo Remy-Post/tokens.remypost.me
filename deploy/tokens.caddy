@@ -1,0 +1,52 @@
+# BEGIN tokens — managed by apps/tokens (scripts/vm-setup.sh rewrites everything up to END tokens)
+# tokens.remypost.me: static usage meter.
+#   App:  /srv/sites/tokens/current -> releases/<name>   (scripts/deploy.sh)
+#   Data: /srv/sites/tokens/data/usage.json, outlives releases (scripts/ship.sh at 00:00 and 12:00)
+(tokens) {
+	encode zstd gzip
+	log
+	header {
+		Strict-Transport-Security "max-age=31536000"
+		X-Content-Type-Options "nosniff"
+		Referrer-Policy "strict-origin-when-cross-origin"
+		X-Frame-Options "DENY"
+		Cross-Origin-Opener-Policy "same-origin"
+		Permissions-Policy "camera=(), microphone=(), geolocation=(), browsing-topics=()"
+		Content-Security-Policy "default-src 'none'; script-src 'self'; style-src 'self'; font-src 'self'; img-src 'self' data:; connect-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'"
+		X-Robots-Tag "noindex, nofollow, noarchive, nosnippet, noimageindex, noai, noimageai"
+		-Server
+	}
+	@assets path /assets/*
+	header @assets Cache-Control "public, max-age=31536000, immutable"
+	@fresh not path /assets/*
+	header @fresh Cache-Control "no-cache"
+
+	# Crawlers that name themselves (github.com/ai-robots-txt/ai.robots.txt, generic names removed).
+	@aibots header_regexp User-Agent `(?i)\b(?:AddSearchBot|AgentDataBot|AgentTimes|AGI Agent|AI2Bot|AI2Bot\-DeepResearchEval|Ai2Bot\-Dolma|aiHitBot|AIWebIndex|amazon\-kendra|amazon\-QBusiness|Amazonbot|AmazonBuyForMe|Amzn\-SearchBot|Amzn\-User|Andibot|Anomura|anthropic\-ai|ApifyBot|ApifyWebsiteContentCrawler|Applebot|Applebot\-Extended|Aranet\-SearchBot|atlassian\-bot|Awario|AzureAI\-SearchBot|bedrockbot|bigsur\.ai|BixelBot|Bravebot|Brightbot|BuddyBot|Bytespider|CartAI Agentic Commerce|CCBot|Channel3Bot|ChatGLM\-Spider|ChatGPT Agent|ChatGPT\-User|Claude\-Code|Claude\-SearchBot|Claude\-User|Claude\-Web|ClaudeBot|CledaraBot|Cloudflare\-AutoRAG|CloudflareBrowserRenderingCrawler|CloudVertexBot|cohere\-ai|cohere\-training\-data\-crawler|Cotoyogi|CragCrawler|Crawl4AI|Crawlspace|Datenbank Crawler|DeepSeekBot|Diffbot|Diffbot\-User|DoubaoBot|DuckAssistBot|EchoboxBot|ElevenlabsBot|ElevenlabsCrawler|ERNIEBot|ExaBot|ExaSearchBot|ExaUser|FacebookBot|facebookexternalhit|Factset_spyderbot|FirecrawlAgent|FriendlyCrawler|GeistHaus\-PageFetcher|Gemini\-Deep\-Research|Google\-Agent|Google\-CloudVertexBot|Google\-Extended|Google\-Firebase|Google\-Gemini\-CLI|Google\-NotebookLM|GoogleAgent\-Mariner|GoogleAgent\-URLContext|GoogleOther|GoogleOther\-Image|GoogleOther\-Video|GPTBot|Grok Bot|GrokAppAndroid|GrokBot|HarkBot|HenkBot|Hunyuan|iAskBot|iaskspider|ICC\-Crawler|ImagesiftBot|imageSpider|img2dataset|ISSCyberRiskCrawler|kagi\-fetcher|Kangaroo Bot|KeenableBot|Kimi\-Agent|Kimi\-SearchBot|Kimi\-User|KimiBot|KlaviyoAIBot|KunatoCrawler|laion\-huggingface\-processor|LAIONDownloader|Lightpanda|LinerBot|Linguee Bot|LinkupBot|Manus\-User|meta\-externalagent|Meta\-ExternalAgent|Meta\-ExternalFetcher|meta\-externalfetcher|meta\-webindexer|MistralAI\-Index|MistralAI\-Training|MistralAI\-User|MoonshotBot|Mozilla\-Tabstack|MyCentralAIScraperBot|NagetBot|netEstate Imprint Crawler|newsai|NotebookLM|NovaAct|OAI\-AdsBot|OAI\-SearchBot|omgili|omgilibot|OpenAI|opencode|PanguBot|Panscient|panscient\.com|Payhawk Invoice Fetching Agent|Perplexity\-User|PerplexityBot|PetalBot|PhindBot|Poggio\-Citations|Poseidon Research Crawler|qodercli|QualifiedBot|Querit\-SearchBot|QueritBot|QuillBot|quillbot\.com|QwenBot|Reflectionbot|SBIntuitionsBot|Scrapy|ScryBot|SemrushBot\-OCOB|SemrushBot\-SWA|Shap\-User|ShapBot|Sidetrade indexer bot|TavilyBot|Terra Cotta|TerraCotta|Thinkbot|TikTokSpider|Timpibot|TongyiBot|TwinAgent|UseAI|VelenPublicWebCrawler|WARDBot|webzio\-extended|Webzio\-Extended|wpbot|WRTNBot|xAI\-Grok|YandexAdditional|YandexAdditionalBot|YiBot|YiyanBot|YouBot|ZanistaBot)\b`
+	# Honeypot: linked only from a hidden anchor and disallowed in robots.txt; a hit means both were ignored.
+	@trap path /archive /archive/*
+	@data path /data/*
+
+	route {
+		abort @aibots
+		abort @trap
+		handle @data {
+			root * /srv/sites/tokens
+			file_server
+		}
+		handle {
+			root * /srv/sites/tokens/current
+			try_files {path} /index.html
+			file_server
+		}
+	}
+}
+
+tokens.remypost.me {
+	import tokens
+}
+
+tokens.remy-post.duckdns.org {
+	import tokens
+}
+# END tokens

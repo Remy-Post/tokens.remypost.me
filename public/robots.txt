@@ -1,0 +1,3 @@
+# tokens.remypost.me is for people, not crawlers. Nothing here is meant to be indexed or trained on.
+User-agent: *
+Disallow: /

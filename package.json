@@ -1,0 +1,19 @@
+{
+  "name": "tokens",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite --port 5174",
+    "build": "vite build",
+    "preview": "vite preview --port 4174"
+  },
+  "dependencies": {
+    "@fontsource-variable/archivo": "5.3.0",
+    "@fontsource-variable/newsreader": "5.3.0",
+    "@fontsource/fragment-mono": "5.3.0",
+    "preact": "11.0.1"
+  },
+  "devDependencies": {
+    "vite": "8.3.5"
+  }
+}
