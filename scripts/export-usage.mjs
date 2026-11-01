@@ -131,7 +131,9 @@ function merge(historyDays, freshDays) {
     for (const [model, t] of Object.entries(x.m)) m[model] = maxOf(old.m[model], t);
     const hm = { ...old.hm };
     for (const [model, h] of Object.entries(x.hm ?? {})) hm[model] = maxOf(old.hm?.[model], h);
-    byDay.set(x.d, { d: x.d, m, s: Math.max(old.s, x.s), sub: Math.max(old.sub, x.sub), h: maxOf(old.h, x.h), hm });
+    // Each model's hours keep their own maximum, so the hour total must never fall below their sum.
+    const split = Array.from({ length: 24 }, (_, i) => Object.values(hm).reduce((sum, h) => sum + (h[i] ?? 0), 0));
+    byDay.set(x.d, { d: x.d, m, s: Math.max(old.s, x.s), sub: Math.max(old.sub, x.sub), h: maxOf(maxOf(old.h, x.h), split), hm });
   }
   return [...byDay.values()].sort((a, b) => a.d.localeCompare(b.d));
 }

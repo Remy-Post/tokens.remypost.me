@@ -311,13 +311,12 @@ code {
 @media (min-width: 46rem) {
   .board {
     grid-template-columns: repeat(2, minmax(0, 1fr));
-    /* The two half-width cards (limits, mix) pair up instead of leaving holes beside full-width ones. */
-    grid-auto-flow: row dense;
   }
+  /* Everything full width in reading order, except Hours and Mix (T.5, T.6), which pair up. */
   .card--volume,
+  .card--limits,
   .card--calendar,
   .card--daily,
-  .card--hours,
   .card--models {
     grid-column: span 2;
   }
@@ -455,6 +454,8 @@ code {
 }
 .card--limits {
   gap: 1.3rem;
+  /* Beside the taller Volume card: the meter at the top, the reading's note at the foot, no hole between. */
+  align-content: space-between;
 }
 
 /* ── T.3 Calendar ───────────────────────────────────────────── */
@@ -468,6 +469,13 @@ code {
   display: grid;
   gap: 1rem;
   min-width: 0;
+}
+/* Narrow cards: months two by two under the grid, so the summary doesn't double the card's length. */
+@container (min-width: 20rem) and (max-width: 49.99rem) {
+  .cal__sum {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 0.35rem 1.8rem;
+  }
 }
 @container (min-width: 50rem) {
   .cal-body {
@@ -491,6 +499,9 @@ code {
   border-radius: 8px;
   cursor: default;
   transition: background 0.25s var(--ease);
+}
+.cal__sum li:focus-visible {
+  outline-offset: -2px;
 }
 .cal__sum li[data-on] {
   background: color-mix(in srgb, var(--ink) 5%, transparent);
@@ -711,7 +722,11 @@ code {
   width: 0.85rem;
   cursor: default;
 }
-.scale .cal__cell:hover {
+.scale .cal__cell:focus-visible {
+  outline-offset: 2px;
+}
+.scale .cal__cell:hover,
+.scale .cal__cell:focus-visible {
   transform: scale(1.25);
 }
 .scale span:first-child {
@@ -984,6 +999,9 @@ tbody tr {
 .models tbody tr[data-spot] {
   background: color-mix(in srgb, var(--ink) 4%, transparent);
 }
+.models tbody tr:focus-visible {
+  outline-offset: -2px;
+}
 .models tbody tr[data-off] {
   opacity: 0.45;
 }
@@ -1060,9 +1078,22 @@ tbody tr:last-child > * {
   border-radius: 1px;
   transform: rotate(45deg);
 }
-.tip[data-flip]::after {
+.tip[data-side='bottom']::after {
   bottom: auto;
   top: -4px;
+}
+.tip[data-side='right']::after,
+.tip[data-side='left']::after {
+  top: var(--caret);
+  bottom: auto;
+  margin: -4px 0 0;
+}
+.tip[data-side='right']::after {
+  left: -4px;
+}
+.tip[data-side='left']::after {
+  left: auto;
+  right: -4px;
 }
 .tip__title {
   display: flex;
@@ -1188,7 +1219,9 @@ tbody tr:last-child > * {
   .key,
   .chip__key,
   .tip__key,
-  .seg {
+  .seg,
+  .cal__sum-bar,
+  .cal__sum-bar span {
     forced-color-adjust: none;
   }
   .meter__track {

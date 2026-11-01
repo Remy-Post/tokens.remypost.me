@@ -41,7 +41,17 @@ export default function App() {
   const filter = useFamilyFilter(data?.families ?? []);
   const tipApi = useMemo(
     () => ({
-      show: (el, content) => setTip({ rect: el.getBoundingClientRect(), content }),
+      // The card's bounds and the foot of its heading keep the tooltip inside the chart it describes,
+      // clear of the card's title and of the cards beside it.
+      show: (el, content) => {
+        const card = el.closest('.card');
+        setTip({
+          rect: el.getBoundingClientRect(),
+          bounds: card?.getBoundingClientRect(),
+          ceiling: card?.querySelector('.card__head')?.getBoundingClientRect().bottom,
+          content,
+        });
+      },
       hide: () => setTip(null),
     }),
     [],

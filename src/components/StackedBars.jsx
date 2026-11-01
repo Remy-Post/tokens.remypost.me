@@ -19,7 +19,7 @@ export default function StackedBars({ name, bins, series, filter, label, axis = 
   const [box, width] = useWidth();
   const svg = useRef(null);
   const anchors = useRef([]);
-  const { enabled, spot, setSpot, showAll } = filter;
+  const { enabled, spot, showAll } = filter;
 
   const shown = series.filter((f) => enabled.has(f) || !filter.families.includes(f));
   const stackOf = (b) => shown.reduce((s, f) => s + (b.fam[f] ?? 0), 0);
@@ -139,8 +139,6 @@ export default function StackedBars({ name, bins, series, filter, label, axis = 
                       data-fam={f}
                       d={column(x, y1, barW, segH, s === segs.length - 1)}
                       fill={famColor(f)}
-                      onPointerEnter={() => setSpot(f)}
-                      onPointerLeave={() => setSpot(null)}
                     />
                   );
                 })}

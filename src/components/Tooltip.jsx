@@ -1,9 +1,9 @@
 import { useLayoutEffect, useRef, useState } from 'preact/hooks';
 
 /**
- * Sits right above the mark it describes (pass the mark itself, not its hit area), flips below near the top edge,
- * never leaves the viewport. The caret tracks the mark even when the box is clamped to an edge, and the box
- * glides between neighbouring marks instead of blinking.
+ * Sits right above the mark it describes (pass the mark itself, not its hit area) and stays inside the mark's card.
+ * When there's no room above without covering the card's heading, it moves beside the mark instead.
+ * The caret tracks the mark even when the box is pushed in from an edge, and the box glides between neighbours.
  */
 export default function Tooltip({ tip }) {
   const ref = useRef(null);
@@ -19,13 +19,32 @@ export default function Tooltip({ tip }) {
     const box = ref.current.getBoundingClientRect();
     const pad = 8;
     const gap = 12;
-    let left = r.left + r.width / 2 - box.width / 2;
-    left = Math.min(Math.max(pad, left), window.innerWidth - box.width - pad);
+    const b = tip.bounds;
+    // The card, trimmed to the viewport; a card narrower than the tooltip (phones) falls back to the viewport.
+    const minX = b && b.width > box.width + 2 * pad ? Math.max(pad, b.left + pad) : pad;
+    const maxX = (b && b.width > box.width + 2 * pad ? Math.min(innerWidth, b.right) : innerWidth) - pad;
+    const minY = Math.max(pad, tip.ceiling ?? (b ? b.top + pad : pad));
+    const clampX = (x) => Math.min(Math.max(minX, x), maxX - box.width);
+    let side = 'top';
+    let left = clampX(r.left + r.width / 2 - box.width / 2);
     let top = r.top - box.height - gap;
-    const flip = top < pad;
-    if (flip) top = r.bottom + gap;
-    const caret = Math.min(Math.max(12, r.left + r.width / 2 - left), box.width - 12);
-    setPos({ left, top, flip, caret, glide: wasOpen.current });
+    if (top < minY) {
+      // Beside the mark, on whichever side has room, vertically centred on the mark's top.
+      const right = r.right + gap;
+      side = right + box.width <= maxX ? 'right' : 'left';
+      left = side === 'right' ? right : Math.max(pad, r.left - gap - box.width);
+      top = Math.min(Math.max(minY, r.top - box.height / 2), innerHeight - box.height - pad);
+      if (side === 'left' && r.left - gap - box.width < pad) {
+        side = 'bottom';
+        left = clampX(r.left + r.width / 2 - box.width / 2);
+        top = r.bottom + gap;
+      }
+    }
+    const caret =
+      side === 'top' || side === 'bottom'
+        ? Math.min(Math.max(12, r.left + r.width / 2 - left), box.width - 12)
+        : Math.min(Math.max(12, r.top + Math.min(r.height, 12) / 2 - top), box.height - 12);
+    setPos({ left, top, side, caret, glide: wasOpen.current });
     wasOpen.current = true;
   }, [tip]);
 
@@ -36,7 +55,7 @@ export default function Tooltip({ tip }) {
       role="status"
       aria-live="polite"
       data-open={tip && pos ? '' : undefined}
-      data-flip={pos?.flip ? '' : undefined}
+      data-side={pos?.side}
       data-glide={pos?.glide ? '' : undefined}
       style={
         pos

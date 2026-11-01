@@ -1,8 +1,9 @@
 import { toWeeks } from '../lib/data.js';
-import { day, dayLong, full } from '../lib/format.js';
+import { day, dayLong } from '../lib/format.js';
 import { useWidth } from '../lib/hooks.js';
 import Legend from './Legend.jsx';
 import StackedBars from './StackedBars.jsx';
+import TableView from './TableView.jsx';
 
 /** Output per day over the same three months as the calendar, stacked by model family. */
 export default function Daily({ days, filter, echo }) {
@@ -36,39 +37,14 @@ export default function Daily({ days, filter, echo }) {
         label={`Output tokens ${weekly ? 'per week' : 'per day'} over the last three months, stacked by model family.`}
         height={(w) => Math.round(Math.min(380, Math.max(200, w * 0.42)))}
       />
-      <details class="table-view">
-        <summary>Show as a table</summary>
-        <div class="table-scroll">
-          <table>
-            <caption class="sr-only">Output tokens {weekly ? 'per week' : 'per day'} by model family</caption>
-            <thead>
-              <tr>
-                <th scope="col">{weekly ? 'Week of' : 'Day'}</th>
-                {families.map((f) => (
-                  <th key={f} scope="col">
-                    {f}
-                  </th>
-                ))}
-                <th scope="col">Total</th>
-              </tr>
-            </thead>
-            <tbody>
-              {[...(weekly ? toWeeks(days, families) : days)]
-                .reverse()
-                .filter((b) => b.out > 0)
-                .map((b) => (
-                  <tr key={b.d}>
-                    <th scope="row">{dayLong(b.d)}</th>
-                    {families.map((f) => (
-                      <td key={f}>{b.fam[f] ? full(b.fam[f]) : '–'}</td>
-                    ))}
-                    <td>{full(b.out)}</td>
-                  </tr>
-                ))}
-            </tbody>
-          </table>
-        </div>
-      </details>
+      <TableView
+        caption={`Output tokens ${weekly ? 'per week' : 'per day'} by model family`}
+        head={[weekly ? 'Week of' : 'Day', ...families, 'Total']}
+        rows={[...(weekly ? toWeeks(days, families) : days)]
+          .reverse()
+          .filter((b) => b.out > 0)
+          .map((b) => [dayLong(b.d), ...families.map((f) => b.fam[f]), b.out])}
+      />
     </section>
   );
 }

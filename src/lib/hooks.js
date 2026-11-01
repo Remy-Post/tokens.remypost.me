@@ -1,5 +1,5 @@
 import { createContext } from 'preact';
-import { useContext, useEffect, useLayoutEffect, useRef, useState } from 'preact/hooks';
+import { useContext, useLayoutEffect, useRef, useState } from 'preact/hooks';
 
 /** Width of an element in CSS px, kept current with ResizeObserver. Charts draw in real pixels. */
 export function useWidth() {
@@ -47,22 +47,24 @@ export function useRoving(count, move) {
  * is spotlit by hovering a legend chip, a bar segment or a row of the models table.
  */
 export function useFamilyFilter(families) {
-  const [enabled, setEnabled] = useState(() => new Set(families));
-  const [spot, setSpot] = useState(null);
+  // A choice belongs to the family list it was made against; until there is one, every family is shown.
+  // Deriving this during render (not in an effect) means no frame ever paints with everything hidden.
   const key = families.join(',');
-  useEffect(() => setEnabled(new Set(families)), [key]);
+  const [choice, setChoice] = useState(null);
+  const [spot, setSpot] = useState(null);
+  const enabled = choice?.key === key ? choice.set : new Set(families);
+  const choose = (set) => setChoice({ key, set });
   return {
     families,
     enabled,
     spot,
     setSpot,
-    toggle: (f) =>
-      setEnabled((s) => {
-        const next = new Set(s);
-        next.has(f) ? next.delete(f) : next.add(f);
-        return next;
-      }),
-    only: (f) => setEnabled(new Set([f])),
-    showAll: () => setEnabled(new Set(families)),
+    toggle: (f) => {
+      const next = new Set(enabled);
+      next.has(f) ? next.delete(f) : next.add(f);
+      choose(next);
+    },
+    only: (f) => choose(new Set([f])),
+    showAll: () => choose(new Set(families)),
   };
 }

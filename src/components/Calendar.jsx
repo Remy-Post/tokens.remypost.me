@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'preact/hooks';
 import { compact, day, dayLong, famColor, full } from '../lib/format.js';
 import { useRoving, useTip, useWidth } from '../lib/hooks.js';
 import { TipRow, TipSplit } from './Tooltip.jsx';
+import TableView from './TableView.jsx';
 
 const DOW = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
 const STEPS = 5;
@@ -209,17 +210,34 @@ export default function Calendar({ days, families, from, onDay }) {
               ))}
             </div>
           </div>
-          <div class="scale" aria-hidden="true" onPointerLeave={() => setStep(null)}>
-            <span>Quiet</span>
+          <div class="scale" onPointerLeave={() => setStep(null)}>
+            <span aria-hidden="true">Quiet</span>
             {Array.from({ length: STEPS + 1 }, (_, s) => (
-              <span key={s} class="cal__cell" data-step={s} onPointerEnter={() => setStep(s)} />
+              <span
+                key={s}
+                class="cal__cell"
+                data-step={s}
+                tabIndex={0}
+                role="img"
+                aria-label={s ? `${STEP_LABEL[s]} of active days` : 'No output'}
+                onPointerEnter={() => setStep(s)}
+                onFocus={() => setStep(s)}
+                onBlur={() => setStep(null)}
+              />
             ))}
-            <span>Busy</span>
+            <span aria-hidden="true">Busy</span>
           </div>
         </div>
         <ol class="cal__sum" onPointerLeave={() => setMonth(null)}>
           {sums.map((m) => (
-            <li key={m.key} data-on={month === m.key ? '' : undefined} onPointerEnter={() => setMonth(m.key)}>
+            <li
+              key={m.key}
+              tabIndex={0}
+              data-on={month === m.key ? '' : undefined}
+              onPointerEnter={() => setMonth(m.key)}
+              onFocus={() => setMonth(m.key)}
+              onBlur={() => setMonth(null)}
+            >
               <span class="cal__sum-name">{m.name}</span>
               <span class="cal__sum-value">{compact(m.out)}</span>
               <span class="cal__sum-bar" aria-hidden="true">
@@ -238,33 +256,14 @@ export default function Calendar({ days, families, from, onDay }) {
           ))}
         </ol>
       </div>
-      <details class="table-view">
-        <summary>Show as a table</summary>
-        <div class="table-scroll">
-          <table>
-            <caption class="sr-only">Output tokens and requests per active day</caption>
-            <thead>
-              <tr>
-                <th scope="col">Day</th>
-                <th scope="col">Output tokens</th>
-                <th scope="col">Requests</th>
-              </tr>
-            </thead>
-            <tbody>
-              {[...days]
-                .reverse()
-                .filter((d) => d.out > 0)
-                .map((d) => (
-                  <tr key={d.d}>
-                    <th scope="row">{dayLong(d.d)}</th>
-                    <td>{full(d.out)}</td>
-                    <td>{full(d.req)}</td>
-                  </tr>
-                ))}
-            </tbody>
-          </table>
-        </div>
-      </details>
+      <TableView
+        caption="Output tokens and requests per active day"
+        head={['Day', 'Output tokens', 'Requests']}
+        rows={[...days]
+          .reverse()
+          .filter((d) => d.out > 0)
+          .map((d) => [dayLong(d.d), d.out, d.req])}
+      />
     </section>
   );
 }

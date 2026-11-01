@@ -28,8 +28,11 @@ export default function Models({ models, totals, filter }) {
                 key={m.id}
                 data-spot={filter.spot === m.family ? '' : undefined}
                 data-off={filter.families.includes(m.family) && !filter.enabled.has(m.family) ? '' : undefined}
+                tabIndex={0}
                 onPointerEnter={() => filter.setSpot(m.family)}
                 onPointerLeave={() => filter.setSpot(null)}
+                onFocus={() => filter.setSpot(m.family)}
+                onBlur={() => filter.setSpot(null)}
               >
                 <th scope="row">
                   <span class="key" style={{ background: famColor(m.family) }} />

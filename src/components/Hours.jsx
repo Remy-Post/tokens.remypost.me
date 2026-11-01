@@ -1,6 +1,6 @@
-import { full } from '../lib/format.js';
 import Legend from './Legend.jsx';
 import StackedBars from './StackedBars.jsx';
+import TableView from './TableView.jsx';
 
 const label = (h) => (h === 0 ? '12 am' : h === 12 ? 'noon' : h < 12 ? `${h} am` : `${h - 12} pm`);
 
@@ -43,35 +43,11 @@ export default function Hours({ hours, byFamily, filter }) {
         label="Output tokens by hour of day, stacked by model family."
         height={(w) => Math.round(Math.min(300, Math.max(170, w * 0.46)))}
       />
-      <details class="table-view">
-        <summary>Show as a table</summary>
-        <div class="table-scroll">
-          <table>
-            <caption class="sr-only">Output tokens by hour of day, Eastern time</caption>
-            <thead>
-              <tr>
-                <th scope="col">Hour</th>
-                {byFamily &&
-                  fams.map((f) => (
-                    <th key={f} scope="col">
-                      {f}
-                    </th>
-                  ))}
-                <th scope="col">Total</th>
-              </tr>
-            </thead>
-            <tbody>
-              {hours.map((v, i) => (
-                <tr key={i}>
-                  <th scope="row">{label(i)}</th>
-                  {byFamily && fams.map((f) => <td key={f}>{rows[i][f] ? full(rows[i][f]) : '–'}</td>)}
-                  <td>{full(v)}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      </details>
+      <TableView
+        caption="Output tokens by hour of day, Eastern time"
+        head={['Hour', ...(byFamily ? fams : []), 'Total']}
+        rows={hours.map((v, i) => [label(i), ...(byFamily ? fams.map((f) => rows[i][f]) : []), v])}
+      />
     </section>
   );
 }
