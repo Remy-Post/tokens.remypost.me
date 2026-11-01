@@ -7,11 +7,11 @@ Live at **https://tokens.remypost.me** (staging: https://tokens.remy-post.duckdn
 |---|---|---|
 | T.1 Volume | All tokens since the first log, what Claude wrote, requests, busiest day | Claude Code transcripts |
 | T.2 Plan limits | 5-hour window and weekly % with reset countdowns | Claude Code status line (`rate_limits`) |
-| T.3 Calendar | Output per day, quiet → busy | transcripts |
-| T.4 Output by model | Output per day (per week on narrow screens), stacked by family | transcripts |
-| T.5 Where tokens go | Cache reads, cache writes, output, fresh input | transcripts |
-| T.6 Hours | Output by hour of day, Eastern | transcripts |
-| T.7 Models | Every model version, every count (also the table view) | transcripts |
+| T.3 Calendar | Output per day for the last three months, quiet → busy, with a month-by-month summary | transcripts |
+| T.4 Used by model | Output per day over the same three months (per week on narrow screens), stacked by family | transcripts |
+| T.5 Hours | Output by hour of day, Eastern, stacked by family (`hoursByModel`) | transcripts |
+| T.6 Where tokens go | Cache reads, cache writes, output, fresh input | transcripts |
+| T.7 Models | Every model version, every count; hovering a row spotlights its family | transcripts |
 
 ## How it works
 
