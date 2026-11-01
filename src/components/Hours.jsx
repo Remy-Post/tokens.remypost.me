@@ -95,6 +95,28 @@ export default function Hours({ hours }) {
           </svg>
         )}
       </div>
+      <details class="table-view">
+        <summary>Show as a table</summary>
+        <div class="table-scroll">
+          <table>
+            <caption class="sr-only">Output tokens by hour of day, Eastern time</caption>
+            <thead>
+              <tr>
+                <th scope="col">Hour</th>
+                <th scope="col">Output tokens</th>
+              </tr>
+            </thead>
+            <tbody>
+              {hours.map((v, i) => (
+                <tr key={i}>
+                  <th scope="row">{label(i)}</th>
+                  <td>{full(v)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </details>
     </section>
   );
 }

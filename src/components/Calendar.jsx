@@ -24,9 +24,17 @@ export default function Calendar({ days }) {
   const across = width >= weeks * 22 + 40;
   const th = thresholds(days.map((d) => d.out));
 
+  // Arrows move within the grid as drawn and stop at its edges: across, a column is Mon–Sun of one week;
+  // down, a row is. Stepping a day past Sunday would otherwise jump diagonally into the next week.
   const { active, setActive, onKeyDown } = useRoving(days.length, (i, key) => {
-    const along = across ? { ArrowUp: -1, ArrowDown: 1, ArrowLeft: -7, ArrowRight: 7 } : { ArrowLeft: -1, ArrowRight: 1, ArrowUp: -7, ArrowDown: 7 };
-    return key in along ? i + along[key] : null;
+    const dow = (lead + i) % 7;
+    const dayKeys = across ? ['ArrowUp', 'ArrowDown'] : ['ArrowLeft', 'ArrowRight'];
+    const weekKeys = across ? ['ArrowLeft', 'ArrowRight'] : ['ArrowUp', 'ArrowDown'];
+    if (key === dayKeys[0]) return dow > 0 ? i - 1 : null;
+    if (key === dayKeys[1]) return dow < 6 ? i + 1 : null;
+    if (key === weekKeys[0]) return i - 7;
+    if (key === weekKeys[1]) return i + 7;
+    return null;
   });
 
   const grid = useRef(null);

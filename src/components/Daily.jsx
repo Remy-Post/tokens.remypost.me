@@ -46,8 +46,12 @@ export default function Daily({ data }) {
       </>
     ));
   };
+  // Switching between daily and weekly bars changes how many there are; keep the selection on a real bar.
   useEffect(() => {
-    if (active >= 0 && document.activeElement === svg.current) open(active);
+    if (active >= bins.length) setActive(bins.length - 1);
+  }, [bins.length]);
+  useEffect(() => {
+    if (active >= 0 && active < bins.length && document.activeElement === svg.current) open(active);
   }, [active, weekly]);
 
   // Label the first bin, the last, and a few evenly spaced between, never crowding.

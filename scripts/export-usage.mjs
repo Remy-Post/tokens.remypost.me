@@ -88,21 +88,18 @@ const zero = () => [0, 0, 0, 0, 0, 0];
 
 function aggregate(records) {
   const days = new Map();
-  const hours = Array.from({ length: 24 }, () => 0);
   for (const r of records) {
     const date = new Date(r.ts);
     const d = dayFmt.format(date);
     let day = days.get(d);
-    if (!day) days.set(d, (day = { d, m: {}, sessions: new Set(), sub: 0 }));
+    if (!day) days.set(d, (day = { d, m: {}, sessions: new Set(), sub: 0, h: Array(24).fill(0) }));
     add((day.m[r.model] ??= zero()), r.t);
     day.sessions.add(r.session);
     if (r.sub) day.sub++;
-    hours[Number(hourFmt.format(date)) % 24] += r.t[1];
+    day.h[Number(hourFmt.format(date)) % 24] += r.t[1];
   }
-  return {
-    days: [...days.values()].map((x) => ({ d: x.d, m: x.m, s: x.sessions.size, sub: x.sub })),
-    hours,
-  };
+  // h (output per hour of that day) is kept in the private history only, so the hour chart can be rebuilt exactly.
+  return [...days.values()].map((x) => ({ d: x.d, m: x.m, s: x.sessions.size, sub: x.sub, h: x.h }));
 }
 
 async function readJson(path) {
@@ -116,15 +113,22 @@ async function writeAtomic(path, data) {
   await rename(tmp, path);
 }
 
-/** Days still on disk are recounted exactly; days Claude Code already pruned survive from history. */
-function merge(history, fresh) {
-  const byDay = new Map((history?.days ?? []).map((x) => [x.d, x]));
-  for (const x of fresh.days) byDay.set(x.d, x);
-  const days = [...byDay.values()].sort((a, b) => a.d.localeCompare(b.d));
-  // The hour histogram only covers what is on disk; keep whichever saw more output.
-  const sum = (h) => (h ?? []).reduce((a, b) => a + b, 0);
-  const hours = sum(fresh.hours) >= sum(history?.hours) ? fresh.hours : history.hours;
-  return { days, hours };
+/**
+ * Claude Code prunes transcripts one session file at a time, so a day can lose some of its files and keep others.
+ * A day's true count never goes down, so every field keeps the larger of history and the fresh scan:
+ * today's growing numbers win, and a partly pruned day keeps what it had.
+ */
+const maxOf = (a = [], b = []) => Array.from({ length: Math.max(a.length, b.length) }, (_, i) => Math.max(a[i] ?? 0, b[i] ?? 0));
+function merge(historyDays, freshDays) {
+  const byDay = new Map((historyDays ?? []).map((x) => [x.d, x]));
+  for (const x of freshDays) {
+    const old = byDay.get(x.d);
+    if (!old) { byDay.set(x.d, x); continue; }
+    const m = { ...old.m };
+    for (const [model, t] of Object.entries(x.m)) m[model] = maxOf(old.m[model], t);
+    byDay.set(x.d, { d: x.d, m, s: Math.max(old.s, x.s), sub: Math.max(old.sub, x.sub), h: maxOf(old.h, x.h) });
+  }
+  return [...byDay.values()].sort((a, b) => a.d.localeCompare(b.d));
 }
 
 function pickLimits(raw) {
@@ -139,10 +143,13 @@ function pickLimits(raw) {
 
 const started = performance.now();
 const { records, files } = await scan();
-const fresh = aggregate(records);
 const history = await readJson(HISTORY);
-const { days, hours } = merge(history, fresh);
-await writeAtomic(HISTORY, JSON.stringify({ v: 1, days, hours }));
+const kept = merge(history?.days, aggregate(records));
+await writeAtomic(HISTORY, JSON.stringify({ v: 2, days: kept }));
+
+const hours = Array(24).fill(0);
+for (const day of kept) (day.h ?? []).forEach((v, i) => (hours[i] += v));
+const days = kept.map(({ h, ...day }) => day); // the public file gets the hour totals, not each day's hours
 
 const totals = zero();
 const byModel = {};

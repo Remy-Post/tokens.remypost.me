@@ -1,6 +1,7 @@
 #!/bin/bash
-# Installed on the VM as ~/bin/receive-tokens-usage. Reads usage.json on stdin, refuses anything
-# that isn't a small, valid v1 usage file, then swaps it in atomically.
+# Installed on the VM as ~/bin/receive-tokens-usage. Reads usage.json on stdin and only swaps it in if it
+# matches the v1 shape exactly: counts, dates, model ids and the plan-limit reading. Any extra field or
+# free-text value is refused, so a bug in the exporter can never publish a path, prompt or session id.
 set -euo pipefail
 DIR=/home/ubuntu/sites/tokens/data
 mkdir -p "$DIR"
@@ -8,10 +9,84 @@ TMP=$(mktemp "$DIR/.usage.XXXXXX")
 trap 'rm -f "$TMP"' EXIT
 head -c 2000000 > "$TMP"
 python3 -I - "$TMP" <<'PY'
-import json, sys
+import json, re, sys
+
 d = json.load(open(sys.argv[1]))
-assert d.get("v") == 1, "not a v1 usage file"
-assert isinstance(d.get("days"), list) and isinstance(d.get("totals"), list), "missing days/totals"
+DATE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
+MODEL = re.compile(r"^claude-[a-z0-9.\-]{1,40}$")
+ISO = re.compile(r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d+)?Z$")
+
+def fail(msg):
+    sys.exit(f"rejected: {msg}")
+
+def keys(obj, allowed, where):
+    if not isinstance(obj, dict):
+        fail(f"{where} is not an object")
+    extra = set(obj) - set(allowed)
+    if extra:
+        fail(f"{where} has unexpected fields {sorted(extra)}")
+
+def count(v, where):
+    if not isinstance(v, int) or isinstance(v, bool) or v < 0:
+        fail(f"{where} is not a count")
+
+def tuple6(t, where):
+    if not isinstance(t, list) or len(t) != 6:
+        fail(f"{where} is not a 6-number tuple")
+    for i, v in enumerate(t):
+        count(v, f"{where}[{i}]")
+
+def models(m, where):
+    keys(m, m.keys(), where)
+    for name, t in m.items():
+        if not MODEL.match(name):
+            fail(f"{where} has a non-model key")
+        tuple6(t, f"{where}.{name}")
+
+keys(d, ["v", "generatedAt", "tz", "plan", "source", "fields", "range", "totals", "models", "days", "hours", "limits"], "file")
+if d.get("v") != 1:
+    fail("not v1")
+if not ISO.match(str(d.get("generatedAt", ""))):
+    fail("generatedAt")
+for k, n in (("tz", 40), ("plan", 20), ("source", 60)):
+    if not isinstance(d.get(k), str) or len(d[k]) > n:
+        fail(k)
+if d.get("fields") != ["input", "output", "cacheWrite", "cacheRead", "thinking", "requests"]:
+    fail("fields")
+if d.get("range") is not None:
+    keys(d["range"], ["from", "to"], "range")
+    if not all(DATE.match(str(d["range"].get(k, ""))) for k in ("from", "to")):
+        fail("range dates")
+tuple6(d.get("totals"), "totals")
+models(d.get("models"), "models")
+if not isinstance(d.get("days"), list) or len(d["days"]) > 5000:
+    fail("days")
+for i, day in enumerate(d["days"]):
+    keys(day, ["d", "m", "s", "sub"], f"days[{i}]")
+    if not DATE.match(str(day.get("d", ""))):
+        fail(f"days[{i}].d")
+    models(day.get("m"), f"days[{i}].m")
+    count(day.get("s"), f"days[{i}].s")
+    count(day.get("sub"), f"days[{i}].sub")
+h = d.get("hours")
+if not isinstance(h, list) or len(h) != 24:
+    fail("hours")
+for i, v in enumerate(h):
+    count(v, f"hours[{i}]")
+lim = d.get("limits")
+if lim is not None:
+    keys(lim, ["capturedAt", "fiveHour", "sevenDay"], "limits")
+    if lim.get("capturedAt") is not None and not ISO.match(str(lim["capturedAt"])):
+        fail("limits.capturedAt")
+    for w in ("fiveHour", "sevenDay"):
+        win = lim.get(w)
+        if win is None:
+            continue
+        keys(win, ["pct", "resetsAt"], f"limits.{w}")
+        if not isinstance(win.get("pct"), (int, float)) or not 0 <= win["pct"] <= 1000:
+            fail(f"limits.{w}.pct")
+        if win.get("resetsAt") is not None and not isinstance(win["resetsAt"], (int, float)):
+            fail(f"limits.{w}.resetsAt")
 PY
 chmod 644 "$TMP"
 mv -f "$TMP" "$DIR/usage.json"
