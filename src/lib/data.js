@@ -86,7 +86,7 @@ export function toWeeks(days, families) {
 }
 
 /**
- * The last 13 full weeks (about three months), Monday-aligned and ending on the export date. Days before
+ * About three months: the current week (Monday to the export date) and the 12 full weeks before it. Days before
  * tracking began are padded in with `pre: true` so the calendar and the model chart always show a steady window.
  */
 export const WINDOW_WEEKS = 13;

@@ -333,16 +333,11 @@ code {
   .card--mix { grid-column: span 5; }
   .card--models { grid-column: span 7; }
 }
-/* Big monitors and TVs: a wider board (prose keeps its own measure) and three across at the top,
-   so the numbers sit above the fold. */
+/* Big monitors and TVs: a wider board (prose keeps its own measure), same pairings as laptops. */
 @media (min-width: 110rem) {
   :root {
     --wrap: 120rem;
   }
-  .card--volume { grid-column: span 6; }
-  .card--limits { grid-column: span 3; }
-  .card--mix { grid-column: span 3; }
-  .card--models { grid-column: span 12; }
 }
 
 /* ── T.1 Volume ─────────────────────────────────────────────── */
@@ -560,7 +555,8 @@ code {
   justify-content: start;
 }
 .cal[data-across] {
-  --c: clamp(1.1rem, calc((100cqi - 2.5rem) / var(--weeks) - var(--g)), 2.9rem);
+  /* Grows with the card; on big screens the height cap keeps all seven rows comfortably in view. */
+  --c: clamp(1.1rem, calc((100cqi - 2.5rem) / var(--weeks) - var(--g)), min(4rem, 7.5vh));
   grid-template-areas: '. months' 'dow grid';
 }
 .cal__months {

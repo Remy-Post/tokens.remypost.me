@@ -32,9 +32,9 @@ export default function Tooltip({ tip }) {
       // Beside the mark, on whichever side has room, vertically centred on the mark's top.
       const right = r.right + gap;
       side = right + box.width <= maxX ? 'right' : 'left';
-      left = side === 'right' ? right : Math.max(pad, r.left - gap - box.width);
+      left = side === 'right' ? right : Math.max(minX, r.left - gap - box.width);
       top = Math.min(Math.max(minY, r.top - box.height / 2), innerHeight - box.height - pad);
-      if (side === 'left' && r.left - gap - box.width < pad) {
+      if (side === 'left' && r.left - gap - box.width < minX) {
         side = 'bottom';
         left = clampX(r.left + r.width / 2 - box.width / 2);
         top = r.bottom + gap;
