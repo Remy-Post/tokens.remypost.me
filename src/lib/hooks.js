@@ -1,5 +1,5 @@
 import { createContext } from 'preact';
-import { useContext, useLayoutEffect, useRef, useState } from 'preact/hooks';
+import { useContext, useEffect, useLayoutEffect, useRef, useState } from 'preact/hooks';
 
 /** Width of an element in CSS px, kept current with ResizeObserver. Charts draw in real pixels. */
 export function useWidth() {
@@ -40,4 +40,29 @@ export function useRoving(count, move) {
     setActive(next);
   };
   return { active, setActive, onKeyDown };
+}
+
+/**
+ * Shared model-family filter for every chart that stacks by family: which families are shown, and which one
+ * is spotlit by hovering a legend chip, a bar segment or a row of the models table.
+ */
+export function useFamilyFilter(families) {
+  const [enabled, setEnabled] = useState(() => new Set(families));
+  const [spot, setSpot] = useState(null);
+  const key = families.join(',');
+  useEffect(() => setEnabled(new Set(families)), [key]);
+  return {
+    families,
+    enabled,
+    spot,
+    setSpot,
+    toggle: (f) =>
+      setEnabled((s) => {
+        const next = new Set(s);
+        next.has(f) ? next.delete(f) : next.add(f);
+        return next;
+      }),
+    only: (f) => setEnabled(new Set([f])),
+    showAll: () => setEnabled(new Set(families)),
+  };
 }

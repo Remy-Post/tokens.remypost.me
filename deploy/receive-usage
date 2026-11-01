@@ -1,6 +1,6 @@
 #!/bin/bash
 # Installed on the VM as ~/bin/receive-tokens-usage. Reads usage.json on stdin and only swaps it in if it
-# matches the v1 shape exactly: counts, dates, model ids and the plan-limit reading. Any extra field or
+# matches the v1 shape exactly: counts, dates, model ids and the plan-limit reading (hoursByModel is optional). Any extra field or
 # free-text value is refused, so a bug in the exporter can never publish a path, prompt or session id.
 set -euo pipefail
 DIR=/home/ubuntu/sites/tokens/data
@@ -43,7 +43,7 @@ def models(m, where):
             fail(f"{where} has a non-model key")
         tuple6(t, f"{where}.{name}")
 
-keys(d, ["v", "generatedAt", "tz", "plan", "source", "fields", "range", "totals", "models", "days", "hours", "limits"], "file")
+keys(d, ["v", "generatedAt", "tz", "plan", "source", "fields", "range", "totals", "models", "days", "hours", "hoursByModel", "limits"], "file")
 if d.get("v") != 1:
     fail("not v1")
 if not ISO.match(str(d.get("generatedAt", ""))):
@@ -73,6 +73,16 @@ if not isinstance(h, list) or len(h) != 24:
     fail("hours")
 for i, v in enumerate(h):
     count(v, f"hours[{i}]")
+hm = d.get("hoursByModel")
+if hm is not None:
+    keys(hm, hm.keys(), "hoursByModel")
+    for name, row in hm.items():
+        if not MODEL.match(name):
+            fail("hoursByModel has a non-model key")
+        if not isinstance(row, list) or len(row) != 24:
+            fail(f"hoursByModel.{name}")
+        for i, v in enumerate(row):
+            count(v, f"hoursByModel.{name}[{i}]")
 lim = d.get("limits")
 if lim is not None:
     keys(lim, ["capturedAt", "fiveHour", "sevenDay"], "limits")

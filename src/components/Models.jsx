@@ -1,13 +1,14 @@
 import { OUT, IN, CW, CR, REQ } from '../lib/data.js';
-import { compact, full, pct } from '../lib/format.js';
-import { famColor } from './Daily.jsx';
+import { compact, famColor, full, pct } from '../lib/format.js';
 
-/** Every model version, every count. Also the table view for the charts above. */
-export default function Models({ models, totals }) {
+/** Every model version, every count. Hovering a row spotlights its family in the charts above. */
+export default function Models({ models, totals, filter }) {
   return (
     <section class="card card--models" aria-labelledby="t7">
-      <p class="label" id="t7">T.7 Models</p>
-      <h2 class="card__title">By model version</h2>
+      <header class="card__head">
+        <p class="label" id="t7">T.7 Models</p>
+        <h2 class="card__title">By model version</h2>
+      </header>
       <div class="table-scroll">
         <table class="models">
           <thead>
@@ -23,9 +24,15 @@ export default function Models({ models, totals }) {
           </thead>
           <tbody>
             {models.map((m) => (
-              <tr key={m.id}>
+              <tr
+                key={m.id}
+                data-spot={filter.spot === m.family ? '' : undefined}
+                data-off={filter.families.includes(m.family) && !filter.enabled.has(m.family) ? '' : undefined}
+                onPointerEnter={() => filter.setSpot(m.family)}
+                onPointerLeave={() => filter.setSpot(null)}
+              >
                 <th scope="row">
-                  <span class="legend__key" style={{ background: famColor(m.family) }} />
+                  <span class="key" style={{ background: famColor(m.family) }} />
                   {m.name}
                 </th>
                 <td>{full(m.t[REQ])}</td>

@@ -32,3 +32,6 @@ export function ticks(max, count = 3) {
   const step = [1, 2, 2.5, 5, 10].map((s) => s * mag).find((s) => s >= raw);
   return Array.from({ length: Math.ceil(max / step) + 1 }, (_, i) => i * step);
 }
+
+/** Fixed family colours live in CSS so both themes stay in one place. */
+export const famColor = (f) => `var(--fam-${f.toLowerCase()})`;

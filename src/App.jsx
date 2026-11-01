@@ -9,7 +9,7 @@ import Tooltip from './components/Tooltip.jsx';
 import Volume from './components/Volume.jsx';
 import { derive } from './lib/data.js';
 import { duration, when } from './lib/format.js';
-import { TipContext } from './lib/hooks.js';
+import { TipContext, useFamilyFilter } from './lib/hooks.js';
 
 const STALE_MS = 13 * 3600 * 1000; // exports land at 00:00 and 12:00 Eastern
 
@@ -18,6 +18,7 @@ export default function App() {
   const [error, setError] = useState(null);
   const [now, setNow] = useState(Date.now());
   const [tip, setTip] = useState(null);
+  const [echo, setEcho] = useState(null); // the calendar day under the pointer, echoed in the model chart
 
   const load = () => {
     setError(null);
@@ -37,6 +38,7 @@ export default function App() {
   }, []);
 
   const data = useMemo(() => raw && raw.range && derive(raw), [raw]);
+  const filter = useFamilyFilter(data?.families ?? []);
   const tipApi = useMemo(
     () => ({
       show: (el, content) => setTip({ rect: el.getBoundingClientRect(), content }),
@@ -58,21 +60,6 @@ export default function App() {
       <a class="skip" href="#main">
         Skip to the numbers
       </a>
-      <header class="bar">
-        <div class="wrap bar__inner">
-          <a class="brand" href="https://remypost.me" aria-label="Remy Post, home">
-            <span class="monogram" aria-hidden="true">
-              <span>R</span>
-              <span>P</span>
-            </span>
-            <span class="brand__name">Remy Post</span>
-          </a>
-          <a class="bar__link ul" href="https://remypost.me">
-            remypost.me
-          </a>
-        </div>
-      </header>
-
       <main id="main" class="wrap">
         <div class="intro">
           <p class="label">Appendix T</p>
@@ -109,11 +96,11 @@ export default function App() {
           <div class="board">
             <Volume data={data} />
             <Limits limits={data.limits} now={now} />
-            <Calendar days={data.days} />
+            <Calendar days={data.window} families={data.families} from={data.raw.range.from} onDay={setEcho} />
+            <Daily days={data.window} filter={filter} echo={echo} />
+            <Hours hours={data.hours} byFamily={data.hoursByFamily} filter={filter} />
             <Mix totals={data.totals} />
-            <Daily data={data} />
-            <Hours hours={data.hours} />
-            <Models models={data.models} totals={data.totals} />
+            <Models models={data.models} totals={data.totals} filter={filter} />
           </div>
         )}
 
@@ -132,7 +119,13 @@ export default function App() {
       </main>
 
       <footer class="foot wrap">
-        <span>© Remy Post</span>
+        <a class="foot__brand" href="https://remypost.me" aria-label="Remy Post, home">
+          <span class="monogram" aria-hidden="true">
+            <span>R</span>
+            <span>P</span>
+          </span>
+          <span>© Remy Post</span>
+        </a>
         <span>
           <a class="ul" href="https://remypost.me">remypost.me</a> ·{' '}
           <a class="ul" href="https://github.com/Remy-Post">GitHub</a>

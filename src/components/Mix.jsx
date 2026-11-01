@@ -10,8 +10,11 @@ export default function Mix({ totals }) {
     ['Fresh input', totals.input, 'Text sent without caching: my messages, mostly.'],
   ];
   return (
-    <section class="card card--mix" aria-labelledby="t5">
-      <p class="label" id="t5">T.5 Where tokens go</p>
+    <section class="card card--mix" aria-labelledby="t6">
+      <header class="card__head">
+        <p class="label" id="t6">T.6 Where tokens go</p>
+        <h2 class="card__title">Mostly reading, not writing</h2>
+      </header>
       <ul class="mix">
         {rows.map(([label, n, note]) => (
           <li key={label} class="mix__item">

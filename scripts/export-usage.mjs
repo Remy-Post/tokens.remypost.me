@@ -92,14 +92,17 @@ function aggregate(records) {
     const date = new Date(r.ts);
     const d = dayFmt.format(date);
     let day = days.get(d);
-    if (!day) days.set(d, (day = { d, m: {}, sessions: new Set(), sub: 0, h: Array(24).fill(0) }));
+    if (!day) days.set(d, (day = { d, m: {}, sessions: new Set(), sub: 0, h: Array(24).fill(0), hm: {} }));
     add((day.m[r.model] ??= zero()), r.t);
     day.sessions.add(r.session);
     if (r.sub) day.sub++;
-    day.h[Number(hourFmt.format(date)) % 24] += r.t[1];
+    const hour = Number(hourFmt.format(date)) % 24;
+    day.h[hour] += r.t[1];
+    (day.hm[r.model] ??= Array(24).fill(0))[hour] += r.t[1];
   }
-  // h (output per hour of that day) is kept in the private history only, so the hour chart can be rebuilt exactly.
-  return [...days.values()].map((x) => ({ d: x.d, m: x.m, s: x.sessions.size, sub: x.sub, h: x.h }));
+  // h and hm (output per hour of that day, total and per model) stay in the private history only,
+  // so the hour charts can be rebuilt exactly. The public file gets hour totals across all days.
+  return [...days.values()].map((x) => ({ d: x.d, m: x.m, s: x.sessions.size, sub: x.sub, h: x.h, hm: x.hm }));
 }
 
 async function readJson(path) {
@@ -126,7 +129,9 @@ function merge(historyDays, freshDays) {
     if (!old) { byDay.set(x.d, x); continue; }
     const m = { ...old.m };
     for (const [model, t] of Object.entries(x.m)) m[model] = maxOf(old.m[model], t);
-    byDay.set(x.d, { d: x.d, m, s: Math.max(old.s, x.s), sub: Math.max(old.sub, x.sub), h: maxOf(old.h, x.h) });
+    const hm = { ...old.hm };
+    for (const [model, h] of Object.entries(x.hm ?? {})) hm[model] = maxOf(old.hm?.[model], h);
+    byDay.set(x.d, { d: x.d, m, s: Math.max(old.s, x.s), sub: Math.max(old.sub, x.sub), h: maxOf(old.h, x.h), hm });
   }
   return [...byDay.values()].sort((a, b) => a.d.localeCompare(b.d));
 }
@@ -148,8 +153,17 @@ const kept = merge(history?.days, aggregate(records));
 await writeAtomic(HISTORY, JSON.stringify({ v: 2, days: kept }));
 
 const hours = Array(24).fill(0);
-for (const day of kept) (day.h ?? []).forEach((v, i) => (hours[i] += v));
-const days = kept.map(({ h, ...day }) => day); // the public file gets the hour totals, not each day's hours
+const hoursByModel = {};
+for (const day of kept) {
+  (day.h ?? []).forEach((v, i) => (hours[i] += v));
+  for (const [model, h] of Object.entries(day.hm ?? {})) {
+    const acc = (hoursByModel[model] ??= Array(24).fill(0));
+    h.forEach((v, i) => (acc[i] += v));
+  }
+}
+// Days recorded before per-model hours existed only have totals; whatever hours can't be split stay out of
+// hoursByModel, and the page shows the difference from `hours` as unsplit.
+const days = kept.map(({ h, hm, ...day }) => day); // the public file gets the hour totals, not each day's hours
 
 const totals = zero();
 const byModel = {};
@@ -172,6 +186,7 @@ const usage = {
   models: byModel,
   days,
   hours,
+  hoursByModel,
   limits: pickLimits(await readJson(LIMITS)),
 };
 

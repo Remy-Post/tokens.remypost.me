@@ -61,7 +61,9 @@ export function derive(raw) {
     families,
     models,
     days,
+    window: recentWindow(days, families),
     hours: raw.hours,
+    hoursByFamily: hoursByFamilyOf(raw, families),
     limits: raw.limits,
     totals: { all: sum(t), input: t[IN], output: t[OUT], cacheWrite: t[CW], cacheRead: t[CR], thinking: t[THINK], requests: t[REQ] },
     activeDays: raw.days.length,
@@ -81,4 +83,43 @@ export function toWeeks(days, families) {
     for (const f of families) w.fam[f] += day.fam[f];
   }
   return weeks;
+}
+
+/**
+ * The last 13 full weeks (about three months), Monday-aligned and ending on the export date. Days before
+ * tracking began are padded in with `pre: true` so the calendar and the model chart always show a steady window.
+ */
+export const WINDOW_WEEKS = 13;
+export function recentWindow(days, families) {
+  if (!days.length) return [];
+  const last = days.at(-1);
+  const start = utc(last.d) - (last.dow + (WINDOW_WEEKS - 1) * 7) * DAY;
+  const byDate = new Map(days.map((x) => [x.d, x]));
+  const out = [];
+  for (let ms = start; ms <= utc(last.d); ms += DAY) {
+    const d = iso(ms);
+    out.push(byDate.get(d) ?? { d, out: 0, total: 0, req: 0, fam: Object.fromEntries(families.map((f) => [f, 0])), dow: (new Date(ms).getUTCDay() + 6) % 7, pre: true });
+  }
+  return out;
+}
+
+/** raw.hoursByModel (optional) summed into families, per hour. Hours that can't be split land in `Other`. */
+function hoursByFamilyOf(raw, families) {
+  if (!raw.hoursByModel) return null;
+  const out = Array.from({ length: 24 }, () => Object.fromEntries(families.map((f) => [f, 0])));
+  for (const [model, counts] of Object.entries(raw.hoursByModel)) {
+    const f = familyOf(model);
+    if (f in out[0]) counts.forEach((v, h) => (out[h][f] += v));
+  }
+  // Days exported before per-model hours existed only have totals; keep the bars honest with an unsplit remainder.
+  const rest = out.map((o, h) => Math.max(0, (raw.hours[h] ?? 0) - families.reduce((s, f) => s + o[f], 0)));
+  if (rest.some(Boolean)) out.forEach((o, h) => (o.Other = rest[h]));
+  return out;
+}
+
+/** A column segment: 4px rounded data-end on the top segment only, square everywhere else. */
+export function column(x, y, w, h, roundTop) {
+  if (h <= 0) return '';
+  const r = roundTop ? Math.min(4, w / 2, h) : 0;
+  return `M${x},${y + h}V${y + r}${r ? `Q${x},${y} ${x + r},${y}` : ''}H${x + w - r}${r ? `Q${x + w},${y} ${x + w},${y + r}` : ''}V${y + h}Z`;
 }
