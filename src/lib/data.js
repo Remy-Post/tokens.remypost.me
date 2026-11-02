@@ -17,11 +17,15 @@ export function familyOf(model) {
 
 export const isLocal = (model) => !model.startsWith('claude-');
 
-/** qwen3.5:9b -> Qwen, qwen3-coder:30b -> Qwen, gpt-oss:20b -> GPT-OSS, llama3.2 -> Llama */
+/**
+ * qwen3.5:9b -> Qwen, qwen3-coder:30b -> Qwen, gpt-oss:20b -> GPT-OSS, llama3.2 -> Llama, deepseek-r1:8b -> Deepseek,
+ * nomic-embed-text -> Nomic Embed Text. Everything from the first digit on is version or size.
+ */
 const SPELLING = { gpt: 'GPT', 'gpt-oss': 'GPT-OSS' };
 export function localFamily(model) {
-  const base = model.split(':')[0].replace(/[\d.].*$/, '').replace(/-$/, '') || model;
-  return SPELLING[base] ?? base[0].toUpperCase() + base.slice(1);
+  const name = model.split(':')[0];
+  const base = name.replace(/[\d.].*$/, '').replace(/-[a-z]?$/, '') || name;
+  return SPELLING[base] ?? base.split('-').map((w) => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
 }
 
 /** claude-opus-5-5 -> Opus 5.5, claude-haiku-4-5 -> Haiku 4.5, claude-opus-5 -> Opus 5; qwen3.5:9b -> qwen3.5 9b */
@@ -84,6 +88,9 @@ export function derive(base, view = 'cloud') {
   const { src, families, palette, familyOf } = scheme(base, view);
   setFamilies(palette);
   const raw = { ...src, generatedAt: base.generatedAt, tz: base.tz };
+  // Models outside the view's families (a fifth local family, an unknown Claude id) stack as a fixed grey "Other",
+  // so the bars always add up to the day's output.
+  const series = Object.keys(raw.models).some((m) => !families.includes(familyOf(m))) ? [...families, 'Other'] : families;
 
   const models = Object.entries(raw.models)
     .map(([id, t]) => ({ id, name: modelName(id), family: familyOf(id), t }))
@@ -99,7 +106,7 @@ export function derive(base, view = 'cloud') {
     for (let ms = utc(raw.range.from); ms <= last; ms += DAY) {
       const d = iso(ms);
       const src = byDate.get(d);
-      const fam = Object.fromEntries(families.map((f) => [f, 0]));
+      const fam = Object.fromEntries(series.map((f) => [f, 0]));
       let out = 0, total = 0, req = 0;
       for (const [model, t] of Object.entries(src?.m ?? {})) {
         const f = familyOf(model);
@@ -116,9 +123,10 @@ export function derive(base, view = 'cloud') {
   return {
     raw,
     families,
+    series,
     models,
     days,
-    window: recentWindow(days, families),
+    window: recentWindow(days, series),
     hours: raw.hours,
     hoursByFamily: hoursByFamilyOf(raw, families, familyOf),
     limits: base.limits,

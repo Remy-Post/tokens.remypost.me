@@ -151,6 +151,8 @@ function merge(historyDays, freshDays) {
  *   [GIN] 2026/10/30 - 17:57:19 | 200 | 6.65s | 127.0.0.1 | POST "/api/chat"   <- request done (local time)
  *
  * With OLLAMA_MAX_LOADED_MODELS=1 only one model is resident, so every request belongs to the model loaded last.
+ * Ollama's newer engine (safetensors builds such as *-mxfp8) logs only `msg=ServeHTTP method=POST … took=…`, with no
+ * token counts; those requests are counted and reported as uncounted, never guessed.
  * Ollama keeps server.log plus server-1…5.log and rotates on restart; each file is keyed by its first timestamp
  * (the server's start), so a rotated file keeps its key and a file that rotates away keeps its last count.
  */
@@ -161,25 +163,32 @@ const OLLAMA_LINE = {
   eval: /\|\s+eval time = .*?\/\s*(\d+) tokens/,
   done: /^\[GIN\] (\d{4})\/(\d\d)\/(\d\d) - (\d\d):(\d\d):(\d\d) \|\s*\d{3} \|.*\|\s*POST\s+"/,
   start: /^time=(\S+)/,
+  newEngine: /msg=ServeHTTP method=POST /,
   maxLoaded: /OLLAMA_MAX_LOADED_MODELS:(\d+)/,
 };
 
-/** registry.ollama.ai/library/qwen3.5:9b -> qwen3.5:9b, llama3.2:latest -> llama3.2, hf.co/a/b:q4 -> b:q4 */
+/**
+ * registry.ollama.ai/library/qwen3.5:9b -> qwen3.5:9b, llama3.2:latest -> llama3.2, hf.co/a/b:q4 -> b:q4.
+ * Always returns an id the VM validator accepts: odd characters become '-', long names are cut, never dropped.
+ */
 function localModel(name) {
-  const id = name.split('/').at(-1).toLowerCase().replace(/:latest$/, '');
-  return /^[a-z0-9][a-z0-9._-]{0,40}(:[a-z0-9._-]{1,40})?$/.test(id) ? id : null;
+  const [base = '', tag] = name.split('/').at(-1).toLowerCase().replace(/:latest$/, '').split(':');
+  const clean = (s, n) => s.replace(/[^a-z0-9._-]/g, '-').slice(0, n);
+  const id = clean(base, 41).replace(/^[^a-z0-9]+/, '') || 'unknown';
+  return tag ? `${id}:${clean(tag, 40)}` : id;
 }
 
 async function scanOllamaFile(file) {
   const rl = createInterface({ input: createReadStream(file), crlfDelay: Infinity });
-  let key = null, model = null, multi = false;
+  let key = null, model = null, multi = false, uncounted = 0;
   // With OLLAMA_NUM_PARALLEL > 1 two slots' blocks interleave, so blocks are kept per slot until their eval
   // line, then queued; each finished POST takes the oldest finished block and gives it its time.
   const open = new Map();
   const done = [];
   const records = [];
   for await (const line of rl) {
-    if (key === null) key = OLLAMA_LINE.start.exec(line)?.[1] ?? '';
+    // The file's key is its first timestamp (the server's start); a stray first line doesn't hide the rest.
+    if (key === null) key = OLLAMA_LINE.start.exec(line)?.[1] ?? null;
     // Cheap pre-filter: almost every line is a model-load dump or an /api/ps poll.
     if (line.startsWith('slot print_timing')) {
       const slot = OLLAMA_LINE.slot.exec(line)?.[1];
@@ -199,12 +208,14 @@ async function scanOllamaFile(file) {
       records.push({ ts: new Date(y, mo - 1, d, h, mi, s), model: b.model, t: [b.prompt, b.out, 0, 0, 0] });
     } else if (line.includes('msg="template selection"')) {
       model = localModel(OLLAMA_LINE.model.exec(line)?.[1] ?? '');
+    } else if (OLLAMA_LINE.newEngine.test(line)) {
+      uncounted++;
     } else if (line.includes('msg="server config"')) {
       multi = Number(OLLAMA_LINE.maxLoaded.exec(line)?.[1] ?? 1) !== 1;
     }
   }
   if (multi && records.length) console.warn(`${file}: OLLAMA_MAX_LOADED_MODELS is not 1, so per-model splits may be off`);
-  return { key, records };
+  return { key, records, uncounted };
 }
 
 async function scanOllama() {
@@ -212,8 +223,9 @@ async function scanOllama() {
   try { names = await readdir(OLLAMA_LOGS); } catch { return []; }
   const files = [];
   for (const name of names.filter((x) => /^server(-\d+)?\.log$/.test(x))) {
-    const { key, records } = await scanOllamaFile(join(OLLAMA_LOGS, name));
-    if (key) files.push({ key, records });
+    const { key, records, uncounted } = await scanOllamaFile(join(OLLAMA_LOGS, name));
+    if (key) files.push({ key, records, uncounted });
+    else if (records.length) console.warn(`${name}: no timestamp line, so its ${records.length} requests can't be kept`);
   }
   return files;
 }
@@ -312,6 +324,8 @@ const usage = {
 await writeAtomic(OUT, JSON.stringify(usage));
 const ms = Math.round(performance.now() - started);
 const localN = ollama.reduce((s, f) => s + f.records.length, 0);
+const uncounted = ollama.reduce((s, f) => s + f.uncounted, 0);
+if (uncounted) console.warn(`${uncounted} requests on Ollama's newer engine logged no token counts and are not included`);
 console.log(
   `usage.json: ${cloud.days.length} days, ${records.length} responses from ${files} files; ` +
     `local ${local.days.length} days, ${localN} requests from ${ollama.length} logs in ${ms} ms -> ${OUT}`,

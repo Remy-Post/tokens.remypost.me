@@ -1,5 +1,5 @@
 import { createContext } from 'preact';
-import { useContext, useLayoutEffect, useRef, useState } from 'preact/hooks';
+import { useContext, useLayoutEffect, useMemo, useRef, useState } from 'preact/hooks';
 
 /** Width of an element in CSS px, kept current with ResizeObserver. Charts draw in real pixels. */
 export function useWidth() {
@@ -47,13 +47,16 @@ export function useRoving(count, move) {
  * is spotlit by hovering a legend chip, a bar segment or a row of the models table.
  */
 export function useFamilyFilter(families) {
-  // A choice belongs to the family list it was made against; until there is one, every family is shown.
-  // Deriving this during render (not in an effect) means no frame ever paints with everything hidden.
+  // A choice belongs to the family list it was made against (one per view), so switching views and back keeps
+  // it; until there is one, every family is shown. Deriving this during render (not in an effect) means no frame
+  // ever paints with everything hidden. The default Set is built once per list: charts re-anchor their tooltip
+  // whenever `enabled` changes, so a fresh Set on every render would loop.
   const key = families.join(',');
-  const [choice, setChoice] = useState(null);
+  const [choices, setChoices] = useState({});
   const [spot, setSpot] = useState(null);
-  const enabled = choice?.key === key ? choice.set : new Set(families);
-  const choose = (set) => setChoice({ key, set });
+  const all = useMemo(() => new Set(families), [key]);
+  const enabled = choices[key] ?? all;
+  const choose = (set) => setChoices((c) => ({ ...c, [key]: set }));
   return {
     families,
     enabled,

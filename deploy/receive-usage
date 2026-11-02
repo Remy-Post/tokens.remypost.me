@@ -13,11 +13,16 @@ python3 -I - "$TMP" <<'PY'
 import json, re, sys
 
 d = json.load(open(sys.argv[1]))
-DATE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
-MODEL = re.compile(r"^claude-[a-z0-9.\-]{1,40}$")
+# Every pattern is applied with fullmatch (Python's $ also matches before a trailing newline) and uses [0-9]
+# (\d also matches non-ASCII digits).
+DATE = re.compile(r"[0-9]{4}-[0-9]{2}-[0-9]{2}")
+MODEL = re.compile(r"claude-[a-z0-9.\-]{1,40}")
 # Ollama model ids: name[:tag], lower case, e.g. qwen3.5:9b, gpt-oss:20b, llama3.2
-LOCAL_MODEL = re.compile(r"^[a-z0-9][a-z0-9._\-]{0,40}(:[a-z0-9._\-]{1,40})?$")
-ISO = re.compile(r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d+)?Z$")
+LOCAL_MODEL = re.compile(r"[a-z0-9][a-z0-9._\-]{0,40}(:[a-z0-9._\-]{1,40})?")
+ISO = re.compile(r"[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(\.[0-9]+)?Z")
+# The few strings the file carries are labels, never paths or prose: letters, digits and spaces only.
+LABEL = re.compile(r"[A-Za-z][A-Za-z0-9 ]*")
+TZ = re.compile(r"[A-Za-z_]+(/[A-Za-z0-9_+\-]+)*")
 
 def fail(msg):
     sys.exit(f"rejected: {msg}")
@@ -42,14 +47,14 @@ def tuple6(t, where):
 def models(m, where, pattern=MODEL):
     keys(m, m.keys(), where)
     for name, t in m.items():
-        if not pattern.match(name):
+        if not pattern.fullmatch(name):
             fail(f"{where} has a non-model key")
         tuple6(t, f"{where}.{name}")
 
 def date_range(r, where):
     if r is not None:
         keys(r, ["from", "to"], where)
-        if not all(DATE.match(str(r.get(k, ""))) for k in ("from", "to")):
+        if not all(DATE.fullmatch(str(r.get(k, ""))) for k in ("from", "to")):
             fail(f"{where} dates")
 
 def hours24(h, where):
@@ -63,17 +68,17 @@ def hours_by_model(hm, where, pattern=MODEL):
         return
     keys(hm, hm.keys(), where)
     for name, row in hm.items():
-        if not pattern.match(name):
+        if not pattern.fullmatch(name):
             fail(f"{where} has a non-model key")
         hours24(row, f"{where}.{name}")
 
 keys(d, ["v", "generatedAt", "tz", "plan", "source", "fields", "range", "totals", "models", "days", "hours", "hoursByModel", "limits", "local"], "file")
 if d.get("v") != 1:
     fail("not v1")
-if not ISO.match(str(d.get("generatedAt", ""))):
+if not ISO.fullmatch(str(d.get("generatedAt", ""))):
     fail("generatedAt")
-for k, n in (("tz", 40), ("plan", 20), ("source", 60)):
-    if not isinstance(d.get(k), str) or len(d[k]) > n:
+for k, n, pattern in (("tz", 40, TZ), ("plan", 20, LABEL), ("source", 60, LABEL)):
+    if not isinstance(d.get(k), str) or len(d[k]) > n or not pattern.fullmatch(d[k]):
         fail(k)
 if d.get("fields") != ["input", "output", "cacheWrite", "cacheRead", "thinking", "requests"]:
     fail("fields")
@@ -84,7 +89,7 @@ if not isinstance(d.get("days"), list) or len(d["days"]) > 5000:
     fail("days")
 for i, day in enumerate(d["days"]):
     keys(day, ["d", "m", "s", "sub"], f"days[{i}]")
-    if not DATE.match(str(day.get("d", ""))):
+    if not DATE.fullmatch(str(day.get("d", ""))):
         fail(f"days[{i}].d")
     models(day.get("m"), f"days[{i}].m")
     count(day.get("s"), f"days[{i}].s")
@@ -94,7 +99,7 @@ hours_by_model(d.get("hoursByModel"), "hoursByModel")
 loc = d.get("local")
 if loc is not None:
     keys(loc, ["source", "range", "totals", "models", "days", "hours", "hoursByModel"], "local")
-    if not isinstance(loc.get("source"), str) or len(loc["source"]) > 60:
+    if not isinstance(loc.get("source"), str) or len(loc["source"]) > 60 or not LABEL.fullmatch(loc["source"]):
         fail("local.source")
     date_range(loc.get("range"), "local.range")
     tuple6(loc.get("totals"), "local.totals")
@@ -103,7 +108,7 @@ if loc is not None:
         fail("local.days")
     for i, day in enumerate(loc["days"]):
         keys(day, ["d", "m"], f"local.days[{i}]")
-        if not DATE.match(str(day.get("d", ""))):
+        if not DATE.fullmatch(str(day.get("d", ""))):
             fail(f"local.days[{i}].d")
         models(day.get("m"), f"local.days[{i}].m", LOCAL_MODEL)
     hours24(loc.get("hours"), "local.hours")
@@ -111,7 +116,7 @@ if loc is not None:
 lim = d.get("limits")
 if lim is not None:
     keys(lim, ["capturedAt", "fiveHour", "sevenDay"], "limits")
-    if lim.get("capturedAt") is not None and not ISO.match(str(lim["capturedAt"])):
+    if lim.get("capturedAt") is not None and not ISO.fullmatch(str(lim["capturedAt"])):
         fail("limits.capturedAt")
     for w in ("fiveHour", "sevenDay"):
         win = lim.get(w)

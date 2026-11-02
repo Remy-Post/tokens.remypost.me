@@ -75,7 +75,7 @@ export default function App() {
   }, []);
 
   const hasLocal = Boolean(raw?.local?.range);
-  const shown = hasLocal ? view : 'cloud';
+  const shown = raw && !hasLocal ? 'cloud' : view; // a ?view= link keeps its heading while the data loads
   const copy = COPY[shown];
   const data = useMemo(() => raw && raw.range && derive(raw, shown), [raw, shown]);
   const filter = useFamilyFilter(data?.families ?? []);
@@ -154,8 +154,8 @@ export default function App() {
           <div class="board">
             <Volume data={data} />
             {shown !== 'local' && <Limits limits={data.limits} now={now} />}
-            <Calendar days={data.window} families={data.families} from={data.raw.range.from} onDay={setEcho} title={copy.calendar} />
-            <Daily days={data.window} filter={filter} echo={echo} title={copy.daily} />
+            <Calendar days={data.window} families={data.series} from={data.raw.range.from} onDay={setEcho} title={copy.calendar} />
+            <Daily days={data.window} series={data.series} filter={filter} echo={echo} title={copy.daily} />
             <Hours hours={data.hours} byFamily={data.hoursByFamily} filter={filter} />
             <Mix totals={data.totals} view={shown} />
             <Models models={data.models} totals={data.totals} filter={filter} />
@@ -172,7 +172,8 @@ export default function App() {
             {hasLocal && (
               <li>
                 Local counts come from Ollama's server logs on the same Mac, which record each request's prompt and output
-                tokens. They start {dayLong(raw.local.range.from)}, the oldest log Ollama kept.
+                tokens. They start {dayLong(raw.local.range.from)}, the oldest log Ollama kept. Requests served by Ollama's
+                newer engine (mxfp8 builds) log no token counts and aren't included.
               </li>
             )}
             <li>Plan limits come from Claude Code's documented status-line data. No passwords or tokens are read.</li>

@@ -3,6 +3,7 @@ import { compact, famColor, full, pct } from '../lib/format.js';
 
 /** Every model version, every count. Hovering a row spotlights its family in the charts above. */
 export default function Models({ models, totals, filter }) {
+  const cache = totals.cacheWrite + totals.cacheRead > 0; // Ollama logs no cache split, so Local hides both columns
   return (
     <section class="card card--models" aria-labelledby="t7">
       <header class="card__head">
@@ -18,8 +19,8 @@ export default function Models({ models, totals, filter }) {
               <th scope="col">Written</th>
               <th scope="col">Share</th>
               <th scope="col" class="wide">Input</th>
-              <th scope="col" class="wide">Cache write</th>
-              <th scope="col" class="wide">Cache read</th>
+              {cache && <th scope="col" class="wide">Cache write</th>}
+              {cache && <th scope="col" class="wide">Cache read</th>}
             </tr>
           </thead>
           <tbody>
@@ -42,8 +43,8 @@ export default function Models({ models, totals, filter }) {
                 <td title={full(m.t[OUT])}>{compact(m.t[OUT])}</td>
                 <td>{pct(totals.output ? (m.t[OUT] / totals.output) * 100 : 0)}</td>
                 <td class="wide" title={full(m.t[IN])}>{compact(m.t[IN])}</td>
-                <td class="wide" title={full(m.t[CW])}>{compact(m.t[CW])}</td>
-                <td class="wide" title={full(m.t[CR])}>{compact(m.t[CR])}</td>
+                {cache && <td class="wide" title={full(m.t[CW])}>{compact(m.t[CW])}</td>}
+                {cache && <td class="wide" title={full(m.t[CR])}>{compact(m.t[CR])}</td>}
               </tr>
             ))}
           </tbody>

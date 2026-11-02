@@ -71,8 +71,16 @@ export default function StackedBars({ name, bins, series, filter, label, axis = 
     if (active >= 0 && active < bins.length && document.activeElement === svg.current) open(active);
   }, [active, bins.length, enabled, width]);
 
-  // Label the first bin, the last, and a few evenly spaced between, never crowding.
-  const every = Math.max(1, Math.ceil(64 / Math.max(slot, 1)));
+  // Label the first bin, the last, and a few evenly spaced between, never crowding. A label ("Aug 10") is six
+  // Fragment Mono characters (0.618em each) at 0.62rem; the root size grows on big screens, so the spacing does too.
+  const rem = parseFloat(getComputedStyle(document.documentElement).fontSize) || 16;
+  const textW = rem * 0.62 * 0.618 * 6;
+  const step = Math.max(slot, 1);
+  const every = Math.max(1, Math.ceil(Math.max(64, textW + 24) / step));
+  // With a y axis the first and last labels hug their bar's outer edge, so the label next to one needs its own half
+  // width, the edge label's full width and a gap between their bars.
+  const edge = axis ? Math.max(1, Math.ceil((1.5 * textW + 8 - barW / 2) / step)) : every;
+  const last = bins.length - 1;
 
   return (
     <div ref={box} class="chart">
@@ -154,14 +162,15 @@ export default function StackedBars({ name, bins, series, filter, label, axis = 
                 />
                 {b.x != null &&
                   (!sparseX ||
-                    ((i % every === 0 || i === bins.length - 1) &&
-                      (i === bins.length - 1 || bins.length - 1 - i >= every))) && (
+                    ((i % every === 0 || i === last) && (i === 0 || i === last || (i >= edge && last - i >= edge)))) && (
                     <text
                       class="col__x"
                       data-peak={b.peak ? '' : undefined}
-                      x={x + barW / 2}
+                      // With a y axis, the first and last labels hug their bar's outer edge so a large font never
+                      // runs into the tick labels or off the card.
+                      x={axis && i === 0 ? x : axis && i === last ? x + barW : x + barW / 2}
                       y={h - 8}
-                      text-anchor="middle"
+                      text-anchor={axis && i === 0 ? 'start' : axis && i === last ? 'end' : 'middle'}
                     >
                       {b.x}
                     </text>

@@ -6,9 +6,9 @@ import StackedBars from './StackedBars.jsx';
 import TableView from './TableView.jsx';
 
 /** Output per day over the same three months as the calendar, stacked by model family. */
-export default function Daily({ days, filter, echo, title = 'Which Claude did the writing' }) {
+export default function Daily({ days, series, filter, echo, title = 'Which Claude did the writing' }) {
   const [box, width] = useWidth();
-  const { families } = filter;
+  const families = series ?? filter.families; // filterable families, plus a fixed "Other" when there is one
   // One column per day while each gets at least 6px, otherwise one per week.
   const weekly = days.length * 6 > Math.max(0, width - 44);
   const bins = (weekly ? toWeeks(days, families) : days).map((b, i, all) => ({
@@ -27,7 +27,7 @@ export default function Daily({ days, filter, echo, title = 'Which Claude did th
         <h2 class="card__title">{title}</h2>
         <p class="fine">Output tokens {weekly ? 'per week' : 'per day'} over the last three months.</p>
       </header>
-      <Legend filter={filter} />
+      <Legend filter={filter} series={families} />
       <StackedBars
         name="day"
         bins={bins}

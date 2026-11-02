@@ -43,7 +43,9 @@ apps/tokens (Preact) ── deploy.sh ── tarball ── ssh ─▶ ~/bin/pub
   API's on 2026-11-02, and the parsed totals equal the raw log sums. Model splits rely on
   `OLLAMA_MAX_LOADED_MODELS=1` (set by `~/.n8n-server/bin/ollama-env.sh`); the exporter warns for logs written
   without it. Ollama doesn't log the cached share of a prompt, so local input is the whole prompt and output
-  includes thinking. Nothing new runs: no proxy, no repointed credentials, about 1 s of parsing per export.
+  includes thinking. Ollama's newer engine (safetensors builds such as `*-mxfp8`) logs only each request's path and
+  duration, so those requests are counted as uncounted in `ship.log` and left out (17 on 2026-10-29, none since).
+  Nothing new runs: no proxy, no repointed credentials, about 1 s of parsing per export.
 - **History never shrinks.** Claude Code prunes old transcripts and Ollama keeps only six logs (rotated on restart);
   every export merges into `~/.local/state/remypost-tokens/history.json` first. Local history is kept per log file,
   keyed by the file's first timestamp, so a rotated-away log keeps its last count.
@@ -137,7 +139,7 @@ and re-run `scripts/vm-setup.sh`.
 - **Chart colours** were validated for colour-blind separation in both themes. The family order
   Opus → Sonnet → Fable → Haiku (clay → slate → ochre → pine) is the one that passes; don't reshuffle it.
   Colours are slots (`--fam-1…4`): Local fills them with its top four families by output in that same order
-  (the rest are Other), and All uses slots 1-2 for Claude and Local.
+  (the rest stack as a fixed grey Other, so bars always add up), and All uses slots 1-2 for Claude and Local.
 - **Local from logs, not a proxy or n8n.** A counting proxy in front of Ollama would read the documented fields but
   adds a process in the request path and means repointing every n8n credential. n8n can't see the Mac's files
   (it runs in Docker, and Execute Command is disabled by default in 2.x), and only some local calls go through it.
