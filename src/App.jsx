@@ -192,6 +192,10 @@ export default function App() {
           <span>© Remy Post</span>
         </a>
         <span>
+          Next door: <a class="ul" href="https://specs.remypost.me">specs</a> ·{' '}
+          <a class="ul" href="https://aa.remypost.me">aa</a>
+        </span>
+        <span>
           <a class="ul" href="https://remypost.me">remypost.me</a> ·{' '}
           <a class="ul" href="https://github.com/Remy-Post">GitHub</a>
         </span>
