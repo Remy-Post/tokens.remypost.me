@@ -1,5 +1,6 @@
 #!/usr/bin/env node
-// Turns Claude Code's local transcripts into the small public usage.json that tokens.remypost.me reads.
+// Turns Claude Code's local transcripts (cloud) and Ollama's server logs (local models) into the small public
+// usage.json that tokens.remypost.me reads.
 //
 //   node scripts/export-usage.mjs [out.json]      (default: public/data/usage.json, for npm run dev)
 //
@@ -20,6 +21,7 @@ const STATE = process.env.TOKENS_STATE_DIR ?? join(homedir(), '.local/state/remy
 // Claude Code prunes old transcripts, so every export is merged into a local history that never shrinks.
 const HISTORY = join(STATE, 'history.json');
 const LIMITS = join(STATE, 'limits.json');
+const OLLAMA_LOGS = process.env.TOKENS_OLLAMA_LOGS ?? join(homedir(), '.ollama/logs');
 
 // Same lookup order Claude Code uses: CLAUDE_CONFIG_DIR (comma-separated) or ~/.claude and ~/.config/claude.
 const roots = (process.env.CLAUDE_CONFIG_DIR?.split(',') ?? [join(homedir(), '.claude'), join(homedir(), '.config/claude')])
@@ -138,6 +140,133 @@ function merge(historyDays, freshDays) {
   return [...byDay.values()].sort((a, b) => a.d.localeCompare(b.d));
 }
 
+/**
+ * Local models. Ollama has no usage history or metrics endpoint (docs.ollama.com/api/usage documents only the
+ * per-response prompt_eval_count / eval_count), but its llama-server runner logs the same two counts for every
+ * request, and those were checked equal to the API's on 2026-11-02:
+ *
+ *   msg="template selection" model=registry.ollama.ai/library/qwen3.5:9b   <- a model was just loaded
+ *   slot print_timing: … | prompt eval time = 359.30 ms /   366 tokens    <- prompt_eval_count
+ *   slot print_timing: … |        eval time = 4744.41 ms /  213 tokens    <- eval_count
+ *   [GIN] 2026/10/30 - 17:57:19 | 200 | 6.65s | 127.0.0.1 | POST "/api/chat"   <- request done (local time)
+ *
+ * With OLLAMA_MAX_LOADED_MODELS=1 only one model is resident, so every request belongs to the model loaded last.
+ * Ollama keeps server.log plus server-1…5.log and rotates on restart; each file is keyed by its first timestamp
+ * (the server's start), so a rotated file keeps its key and a file that rotates away keeps its last count.
+ */
+const OLLAMA_LINE = {
+  model: /msg="template selection" model=(\S+)/,
+  slot: /^slot print_timing: id\s+(\d+) \|/,
+  prompt: /\| prompt eval time = .*?\/\s*(\d+) tokens/,
+  eval: /\|\s+eval time = .*?\/\s*(\d+) tokens/,
+  done: /^\[GIN\] (\d{4})\/(\d\d)\/(\d\d) - (\d\d):(\d\d):(\d\d) \|\s*\d{3} \|.*\|\s*POST\s+"/,
+  start: /^time=(\S+)/,
+  maxLoaded: /OLLAMA_MAX_LOADED_MODELS:(\d+)/,
+};
+
+/** registry.ollama.ai/library/qwen3.5:9b -> qwen3.5:9b, llama3.2:latest -> llama3.2, hf.co/a/b:q4 -> b:q4 */
+function localModel(name) {
+  const id = name.split('/').at(-1).toLowerCase().replace(/:latest$/, '');
+  return /^[a-z0-9][a-z0-9._-]{0,40}(:[a-z0-9._-]{1,40})?$/.test(id) ? id : null;
+}
+
+async function scanOllamaFile(file) {
+  const rl = createInterface({ input: createReadStream(file), crlfDelay: Infinity });
+  let key = null, model = null, multi = false;
+  // With OLLAMA_NUM_PARALLEL > 1 two slots' blocks interleave, so blocks are kept per slot until their eval
+  // line, then queued; each finished POST takes the oldest finished block and gives it its time.
+  const open = new Map();
+  const done = [];
+  const records = [];
+  for await (const line of rl) {
+    if (key === null) key = OLLAMA_LINE.start.exec(line)?.[1] ?? '';
+    // Cheap pre-filter: almost every line is a model-load dump or an /api/ps poll.
+    if (line.startsWith('slot print_timing')) {
+      const slot = OLLAMA_LINE.slot.exec(line)?.[1];
+      const p = OLLAMA_LINE.prompt.exec(line);
+      if (p) { open.set(slot, { model, prompt: Number(p[1]) }); continue; }
+      const e = OLLAMA_LINE.eval.exec(line);
+      const block = open.get(slot);
+      if (e && block) {
+        open.delete(slot);
+        if (block.model) done.push({ ...block, out: Number(e[1]) });
+      }
+    } else if (line.startsWith('[GIN]')) {
+      const g = done.length && OLLAMA_LINE.done.exec(line);
+      if (!g) continue;
+      const b = done.shift();
+      const [, y, mo, d, h, mi, s] = g.map(Number);
+      records.push({ ts: new Date(y, mo - 1, d, h, mi, s), model: b.model, t: [b.prompt, b.out, 0, 0, 0] });
+    } else if (line.includes('msg="template selection"')) {
+      model = localModel(OLLAMA_LINE.model.exec(line)?.[1] ?? '');
+    } else if (line.includes('msg="server config"')) {
+      multi = Number(OLLAMA_LINE.maxLoaded.exec(line)?.[1] ?? 1) !== 1;
+    }
+  }
+  if (multi && records.length) console.warn(`${file}: OLLAMA_MAX_LOADED_MODELS is not 1, so per-model splits may be off`);
+  return { key, records };
+}
+
+async function scanOllama() {
+  let names;
+  try { names = await readdir(OLLAMA_LOGS); } catch { return []; }
+  const files = [];
+  for (const name of names.filter((x) => /^server(-\d+)?\.log$/.test(x))) {
+    const { key, records } = await scanOllamaFile(join(OLLAMA_LOGS, name));
+    if (key) files.push({ key, records });
+  }
+  return files;
+}
+
+/** Days (with private per-hour detail) for local requests: the cloud history's shape, with no sessions. */
+function aggregateLocal(records) {
+  return aggregate(records.map((r) => ({ ...r, session: null, sub: false }))).map((day) => ({ ...day, s: 0, sub: 0 }));
+}
+
+/** Sums days that appear in more than one log file (a restart in the middle of a day). */
+function sumDays(lists) {
+  const byDay = new Map();
+  for (const days of lists) {
+    for (const x of days) {
+      let acc = byDay.get(x.d);
+      if (!acc) byDay.set(x.d, (acc = { d: x.d, m: {}, h: Array(24).fill(0), hm: {} }));
+      for (const [model, t] of Object.entries(x.m)) {
+        const a = (acc.m[model] ??= zero());
+        t.forEach((v, i) => (a[i] += v));
+      }
+      x.h.forEach((v, i) => (acc.h[i] += v));
+      for (const [model, h] of Object.entries(x.hm)) {
+        const a = (acc.hm[model] ??= Array(24).fill(0));
+        h.forEach((v, i) => (a[i] += v));
+      }
+    }
+  }
+  return [...byDay.values()].sort((a, b) => a.d.localeCompare(b.d));
+}
+
+/** The public part of a list of history days: totals per model, hours across all days, days without hours. */
+function publish(kept) {
+  const hours = Array(24).fill(0);
+  const hoursByModel = {};
+  for (const day of kept) {
+    (day.h ?? []).forEach((v, i) => (hours[i] += v));
+    for (const [model, h] of Object.entries(day.hm ?? {})) {
+      const acc = (hoursByModel[model] ??= Array(24).fill(0));
+      h.forEach((v, i) => (acc[i] += v));
+    }
+  }
+  const days = kept.map(({ h, hm, ...day }) => day); // the public file gets the hour totals, not each day's hours
+  const totals = zero();
+  const models = {};
+  for (const day of days) {
+    for (const [model, t] of Object.entries(day.m)) {
+      for (let i = 0; i < 6; i++) totals[i] += t[i];
+      models[model] = (models[model] ?? zero()).map((v, i) => v + t[i]);
+    }
+  }
+  return { range: days.length ? { from: days[0].d, to: days.at(-1).d } : null, totals, models, days, hours, hoursByModel };
+}
+
 function pickLimits(raw) {
   if (!raw?.rate_limits) return null;
   const win = (w) => (w && Number.isFinite(w.used_percentage) ? { pct: w.used_percentage, resetsAt: w.resets_at ?? null } : null);
@@ -152,29 +281,19 @@ const started = performance.now();
 const { records, files } = await scan();
 const history = await readJson(HISTORY);
 const kept = merge(history?.days, aggregate(records));
-await writeAtomic(HISTORY, JSON.stringify({ v: 2, days: kept }));
 
-const hours = Array(24).fill(0);
-const hoursByModel = {};
-for (const day of kept) {
-  (day.h ?? []).forEach((v, i) => (hours[i] += v));
-  for (const [model, h] of Object.entries(day.hm ?? {})) {
-    const acc = (hoursByModel[model] ??= Array(24).fill(0));
-    h.forEach((v, i) => (acc[i] += v));
-  }
-}
+// Local: one entry per Ollama log file. A file only grows until it rotates away, so each file's entry is
+// max-merged with what it had; files no longer on disk keep their last count.
+const ollama = await scanOllama();
+const localFiles = { ...history?.local?.files };
+for (const { key, records: rs } of ollama) localFiles[key] = merge(localFiles[key], aggregateLocal(rs));
+const localKept = sumDays(Object.values(localFiles));
+await writeAtomic(HISTORY, JSON.stringify({ v: 2, days: kept, local: { files: localFiles } }));
+
 // Days recorded before per-model hours existed only have totals; whatever hours can't be split stay out of
 // hoursByModel, and the page shows the difference from `hours` as unsplit.
-const days = kept.map(({ h, hm, ...day }) => day); // the public file gets the hour totals, not each day's hours
-
-const totals = zero();
-const byModel = {};
-for (const day of days) {
-  for (const [model, t] of Object.entries(day.m)) {
-    for (let i = 0; i < 6; i++) totals[i] += t[i];
-    byModel[model] = (byModel[model] ?? zero()).map((v, i) => v + t[i]);
-  }
-}
+const cloud = publish(kept);
+const local = publish(localKept);
 
 const usage = {
   v: 1,
@@ -183,15 +302,17 @@ const usage = {
   plan: PLAN,
   source: 'Claude Code transcripts on one Mac',
   fields: ['input', 'output', 'cacheWrite', 'cacheRead', 'thinking', 'requests'],
-  range: days.length ? { from: days[0].d, to: days.at(-1).d } : null,
-  totals,
-  models: byModel,
-  days,
-  hours,
-  hoursByModel,
+  ...cloud,
   limits: pickLimits(await readJson(LIMITS)),
+  // Optional, so pages and validators from before it simply ignore it. Same tuple order; input is the whole
+  // prompt (Ollama doesn't log what came from cache) and output includes any thinking.
+  ...(local.range && { local: { source: 'Ollama server logs on the same Mac', ...local } }),
 };
 
 await writeAtomic(OUT, JSON.stringify(usage));
 const ms = Math.round(performance.now() - started);
-console.log(`usage.json: ${days.length} days, ${records.length} responses from ${files} files in ${ms} ms -> ${OUT}`);
+const localN = ollama.reduce((s, f) => s + f.records.length, 0);
+console.log(
+  `usage.json: ${cloud.days.length} days, ${records.length} responses from ${files} files; ` +
+    `local ${local.days.length} days, ${localN} requests from ${ollama.length} logs in ${ms} ms -> ${OUT}`,
+);

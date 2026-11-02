@@ -9,6 +9,8 @@ Rules for coding agents working on tokens.remypost.me. The README explains the s
 - **The exporter has zero dependencies** (`node:` built-ins only) and must stay that way. After changing it, compare
   against `npx ccusage@20.0.46 claude daily --json --offline` (totals within 0.1%).
 - **Never read the OAuth token or keychain.** Plan limits come only from the status line's `rate_limits`.
+- **Local (Ollama) counts come only from `~/.ollama/logs`.** After changing that parser, check its totals equal
+  the sums of `prompt eval time … / N tokens` and `eval time … / N tokens` lines in the same logs.
 - **Token tuples** are `[input, output, cacheWrite, cacheRead, thinking, requests]` everywhere. Bump `v` in
   `usage.json` (and `receive-usage`, `App.jsx`) for any breaking shape change.
 - **Chart rules:** one axis; bars ≤ 24px with 2px surface gaps; legend for ≥ 2 series; text never in a series colour;

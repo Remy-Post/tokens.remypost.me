@@ -33,5 +33,10 @@ export function ticks(max, count = 3) {
   return Array.from({ length: Math.ceil(max / step) + 1 }, (_, i) => i * step);
 }
 
-/** Fixed family colours live in CSS so both themes stay in one place. */
-export const famColor = (f) => `var(--fam-${f.toLowerCase()})`;
+/**
+ * Fixed family colours live in CSS so both themes stay in one place. Colour follows a family's slot, its place in
+ * the view's family list (Opus, Sonnet, Fable, Haiku for cloud), so every view uses the validated order.
+ */
+let slots = new Map();
+export const setFamilies = (families) => (slots = new Map(families.map((f, i) => [f, i + 1])));
+export const famColor = (f) => `var(--fam-${slots.get(f) ?? 'other'})`;

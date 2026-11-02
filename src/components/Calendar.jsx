@@ -50,7 +50,7 @@ function monthStarts(days, lead) {
   return out;
 }
 
-export default function Calendar({ days, families, from, onDay }) {
+export default function Calendar({ days, families, from, onDay, title = 'What Claude wrote, day by day' }) {
   const tip = useTip();
   const [box, width] = useWidth();
   const cells = useRef([]);
@@ -135,7 +135,7 @@ export default function Calendar({ days, families, from, onDay }) {
     <section class="card card--calendar" aria-labelledby="t3">
       <header class="card__head">
         <p class="label" id="t3">T.3 Calendar</p>
-        <h2 class="card__title">What Claude wrote, day by day</h2>
+        <h2 class="card__title">{title}</h2>
         <p class="fine">
           The last three months. {tracked.filter((d) => d.out).length} active days since {day(from)}.
         </p>

@@ -137,6 +137,7 @@ export default function StackedBars({ name, bins, series, filter, label, axis = 
                       key={f}
                       class="seg"
                       data-fam={f}
+                      data-lit={spot === f ? '' : undefined}
                       d={column(x, y1, barW, segH, s === segs.length - 1)}
                       fill={famColor(f)}
                     />

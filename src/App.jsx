@@ -7,11 +7,42 @@ import Mix from './components/Mix.jsx';
 import Models from './components/Models.jsx';
 import Tooltip from './components/Tooltip.jsx';
 import Volume from './components/Volume.jsx';
-import { derive } from './lib/data.js';
-import { duration, when } from './lib/format.js';
+import { VIEWS, derive } from './lib/data.js';
+import { dayLong, duration, when } from './lib/format.js';
 import { TipContext, useFamilyFilter } from './lib/hooks.js';
 
 const STALE_MS = 13 * 3600 * 1000; // exports land at 00:00 and 12:00 Eastern
+
+const COPY = {
+  cloud: {
+    lead: 'How much Claude',
+    voice: 'I use.',
+    sub: "Every token my Claude Max subscription has spent in Claude Code. Counted on my Mac from Claude Code's own logs, published here at noon and midnight.",
+    calendar: 'What Claude wrote, day by day',
+    daily: 'Which Claude did the writing',
+  },
+  local: {
+    lead: 'How much runs',
+    voice: 'on my Mac.',
+    sub: "Every token my local models have read and written through Ollama. Counted from Ollama's own logs on the same Mac, published with the cloud numbers.",
+    calendar: 'What my Mac wrote, day by day',
+    daily: 'Which model did the writing',
+  },
+  all: {
+    lead: 'Every token',
+    voice: 'I use.',
+    sub: 'Claude in the cloud and the models on my Mac, added together. Published at noon and midnight.',
+    calendar: 'What got written, day by day',
+    daily: 'Cloud or local',
+  },
+};
+const LABEL = { cloud: 'Cloud', local: 'Local', all: 'All' };
+
+/** ?view=local and ?view=all are shareable; cloud is the default and keeps the plain URL. */
+function initialView() {
+  const v = new URLSearchParams(location.search).get('view');
+  return VIEWS.includes(v) ? v : 'cloud';
+}
 
 export default function App() {
   const [raw, setRaw] = useState(null);
@@ -19,6 +50,12 @@ export default function App() {
   const [now, setNow] = useState(Date.now());
   const [tip, setTip] = useState(null);
   const [echo, setEcho] = useState(null); // the calendar day under the pointer, echoed in the model chart
+  const [view, setView] = useState(initialView);
+  const pick = (v) => {
+    setView(v);
+    setEcho(null);
+    history.replaceState(null, '', v === 'cloud' ? location.pathname : `?view=${v}`);
+  };
 
   const load = () => {
     setError(null);
@@ -37,7 +74,10 @@ export default function App() {
     return () => clearInterval(id);
   }, []);
 
-  const data = useMemo(() => raw && raw.range && derive(raw), [raw]);
+  const hasLocal = Boolean(raw?.local?.range);
+  const shown = hasLocal ? view : 'cloud';
+  const copy = COPY[shown];
+  const data = useMemo(() => raw && raw.range && derive(raw, shown), [raw, shown]);
   const filter = useFamilyFilter(data?.families ?? []);
   const tipApi = useMemo(
     () => ({
@@ -74,12 +114,20 @@ export default function App() {
         <div class="intro">
           <p class="label">Appendix T</p>
           <h1>
-            How much Claude <em class="voice">I use.</em>
+            {copy.lead} <em class="voice">{copy.voice}</em>
           </h1>
-          <p class="voice intro__sub">
-            Every token my Claude Max subscription has spent in Claude Code. Counted on my Mac from Claude Code's own
-            logs, published here at noon and midnight.
-          </p>
+          <p class="voice intro__sub">{copy.sub}</p>
+          {hasLocal && (
+            <fieldset class="view">
+              <legend>Which tokens to show</legend>
+              {VIEWS.map((v) => (
+                <label key={v}>
+                  <input type="radio" name="view" value={v} checked={shown === v} onChange={() => pick(v)} />
+                  {LABEL[v]}
+                </label>
+              ))}
+            </fieldset>
+          )}
           {raw && age > STALE_MS && (
             <p class="notice" role="status">
               <span aria-hidden="true">▲</span> Last update was {duration(age)} ago. The Mac is probably asleep; the next one
@@ -105,11 +153,11 @@ export default function App() {
         {data && (
           <div class="board">
             <Volume data={data} />
-            <Limits limits={data.limits} now={now} />
-            <Calendar days={data.window} families={data.families} from={data.raw.range.from} onDay={setEcho} />
-            <Daily days={data.window} filter={filter} echo={echo} />
+            {shown !== 'local' && <Limits limits={data.limits} now={now} />}
+            <Calendar days={data.window} families={data.families} from={data.raw.range.from} onDay={setEcho} title={copy.calendar} />
+            <Daily days={data.window} filter={filter} echo={echo} title={copy.daily} />
             <Hours hours={data.hours} byFamily={data.hoursByFamily} filter={filter} />
-            <Mix totals={data.totals} />
+            <Mix totals={data.totals} view={shown} />
             <Models models={data.models} totals={data.totals} filter={filter} />
           </div>
         )}
@@ -121,6 +169,12 @@ export default function App() {
               Counts come from Claude Code's transcripts on my Mac, deduplicated per response. Chats on claude.ai and
               other machines aren't included.
             </li>
+            {hasLocal && (
+              <li>
+                Local counts come from Ollama's server logs on the same Mac, which record each request's prompt and output
+                tokens. They start {dayLong(raw.local.range.from)}, the oldest log Ollama kept.
+              </li>
+            )}
             <li>Plan limits come from Claude Code's documented status-line data. No passwords or tokens are read.</li>
             <li>Only totals leave my machine: no prompts, file names or projects.</li>
             {raw && <li>Last export: {when(Date.parse(raw.generatedAt))} Eastern.</li>}

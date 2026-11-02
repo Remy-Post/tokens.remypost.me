@@ -1,19 +1,32 @@
 import { compact, full, pct } from '../lib/format.js';
 
-/** Four kinds of token, as numbers. They differ by orders of magnitude, so a bar would hide three of them. */
-export default function Mix({ totals }) {
-  const share = (n) => (totals.all ? (n / totals.all) * 100 : 0);
-  const rows = [
+/**
+ * Kinds of token, as numbers. They differ by orders of magnitude, so a bar would hide most of them.
+ * Ollama doesn't log what came from its cache, so local tokens only split into read and written.
+ */
+function rowsFor(view, totals) {
+  if (view === 'local')
+    return [
+      ['Read by the model', totals.input, "Every prompt token, cached or not: Ollama's logs don't split them."],
+      ['Written by the model', totals.output, 'Answers, including any thinking.'],
+    ];
+  const who = view === 'all' ? 'a model' : 'Claude';
+  return [
     ['Read from cache', totals.cacheRead, 'Context Claude already had, re-read each turn. Cheap and fast.'],
     ['Written to cache', totals.cacheWrite, 'New context stored so later turns can reuse it.'],
-    ['Written by Claude', totals.output, `Code, prose and plans. ${compact(totals.thinking)} of it was thinking.`],
-    ['Fresh input', totals.input, 'Text sent without caching: my messages, mostly.'],
+    [`Written by ${who}`, totals.output, `Code, prose and plans. ${compact(totals.thinking)} of Claude's was thinking.`],
+    ['Fresh input', totals.input, view === 'all' ? 'Text sent without caching, and every local prompt.' : 'Text sent without caching: my messages, mostly.'],
   ];
+}
+
+export default function Mix({ totals, view = 'cloud' }) {
+  const share = (n) => (totals.all ? (n / totals.all) * 100 : 0);
+  const rows = rowsFor(view, totals);
   return (
     <section class="card card--mix" aria-labelledby="t6">
       <header class="card__head">
         <p class="label" id="t6">T.6 Where tokens go</p>
-        <h2 class="card__title">Mostly reading, not writing</h2>
+        <h2 class="card__title">{totals.output * 2 < totals.all ? 'Mostly reading, not writing' : 'Mostly writing'}</h2>
       </header>
       <ul class="mix">
         {rows.map(([label, n, note]) => (

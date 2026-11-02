@@ -1,7 +1,11 @@
 // Shapes usage.json (written by scripts/export-usage.mjs) into what the sections draw.
 // Token tuples are always [input, output, cacheWrite, cacheRead, thinking, requests].
+import { setFamilies } from './format.js';
 
 export const IN = 0, OUT = 1, CW = 2, CR = 3, THINK = 4, REQ = 5;
+
+/** cloud = Claude Code (the default), local = Ollama on the same Mac (usage.json `local`), all = both added. */
+export const VIEWS = ['cloud', 'local', 'all'];
 
 /** Fixed order = fixed colour. The order was validated for colour-blind separation; don't reshuffle. */
 export const FAMILIES = ['Opus', 'Sonnet', 'Fable', 'Haiku'];
@@ -11,8 +15,18 @@ export function familyOf(model) {
   return hit ?? 'Other';
 }
 
-/** claude-opus-5-5 -> Opus 5.5, claude-haiku-4-5 -> Haiku 4.5, claude-opus-5 -> Opus 5 */
+export const isLocal = (model) => !model.startsWith('claude-');
+
+/** qwen3.5:9b -> Qwen, qwen3-coder:30b -> Qwen, gpt-oss:20b -> GPT-OSS, llama3.2 -> Llama */
+const SPELLING = { gpt: 'GPT', 'gpt-oss': 'GPT-OSS' };
+export function localFamily(model) {
+  const base = model.split(':')[0].replace(/[\d.].*$/, '').replace(/-$/, '') || model;
+  return SPELLING[base] ?? base[0].toUpperCase() + base.slice(1);
+}
+
+/** claude-opus-5-5 -> Opus 5.5, claude-haiku-4-5 -> Haiku 4.5, claude-opus-5 -> Opus 5; qwen3.5:9b -> qwen3.5 9b */
 export function modelName(model) {
+  if (isLocal(model)) return model.replace(':', ' ');
   const m = model.replace(/^claude-/, '').match(/^([a-z]+)-(\d+)(?:-(\d+))?/);
   if (!m) return model;
   const name = m[1][0].toUpperCase() + m[1].slice(1);
@@ -25,8 +39,51 @@ const DAY = 86400000;
 const iso = (ms) => new Date(ms).toISOString().slice(0, 10);
 const utc = (d) => Date.parse(`${d}T00:00:00Z`);
 
-export function derive(raw) {
+/** Cloud and local added together: models never share an id (Claude's all start with claude-). */
+function combine(a, b) {
+  const byDate = new Map(a.days.map((x) => [x.d, { d: x.d, m: { ...x.m } }]));
+  for (const x of b.days) {
+    const day = byDate.get(x.d) ?? { d: x.d, m: {} };
+    Object.assign(day.m, x.m);
+    byDate.set(x.d, day);
+  }
+  const days = [...byDate.values()].sort((x, y) => x.d.localeCompare(y.d));
+  return {
+    range: { from: days[0].d, to: days.at(-1).d },
+    totals: a.totals.map((v, i) => v + b.totals[i]),
+    models: { ...a.models, ...b.models },
+    days,
+    hours: a.hours.map((v, i) => v + b.hours[i]),
+    hoursByModel: { ...a.hoursByModel, ...b.hoursByModel },
+  };
+}
+
+/**
+ * What a view draws from, how its models group into families, and which colour slot each family takes.
+ * Cloud keeps Opus → Haiku on slots 1-4 even when one is missing; local ranks its families by output and takes
+ * the first four slots in the same validated order; all is two series, Claude and Local.
+ */
+function scheme(raw, view) {
+  const local = raw.local?.range ? raw.local : null;
+  if (view === 'local' && local) {
+    const out = {};
+    for (const [m, t] of Object.entries(local.models)) out[localFamily(m)] = (out[localFamily(m)] ?? 0) + t[OUT];
+    const families = Object.keys(out).sort((a, b) => out[b] - out[a]).slice(0, 4);
+    const of = (m) => (families.includes(localFamily(m)) ? localFamily(m) : 'Other');
+    return { src: local, families, palette: families, familyOf: of };
+  }
+  if (view === 'all' && local) {
+    const families = ['Claude', 'Local'];
+    return { src: combine(raw, local), families, palette: families, familyOf: (m) => (isLocal(m) ? 'Local' : 'Claude') };
+  }
   const families = FAMILIES.filter((f) => Object.keys(raw.models).some((m) => familyOf(m) === f));
+  return { src: raw, families, palette: FAMILIES, familyOf };
+}
+
+export function derive(base, view = 'cloud') {
+  const { src, families, palette, familyOf } = scheme(base, view);
+  setFamilies(palette);
+  const raw = { ...src, generatedAt: base.generatedAt, tz: base.tz };
 
   const models = Object.entries(raw.models)
     .map(([id, t]) => ({ id, name: modelName(id), family: familyOf(id), t }))
@@ -63,8 +120,9 @@ export function derive(raw) {
     days,
     window: recentWindow(days, families),
     hours: raw.hours,
-    hoursByFamily: hoursByFamilyOf(raw, families),
-    limits: raw.limits,
+    hoursByFamily: hoursByFamilyOf(raw, families, familyOf),
+    limits: base.limits,
+    view,
     totals: { all: sum(t), input: t[IN], output: t[OUT], cacheWrite: t[CW], cacheRead: t[CR], thinking: t[THINK], requests: t[REQ] },
     activeDays: raw.days.length,
     busiest: days.reduce((a, b) => (b.out > (a?.out ?? -1) ? b : a), null),
@@ -104,7 +162,7 @@ export function recentWindow(days, families) {
 }
 
 /** raw.hoursByModel (optional) summed into families, per hour. Hours that can't be split land in `Other`. */
-function hoursByFamilyOf(raw, families) {
+function hoursByFamilyOf(raw, families, familyOf) {
   if (!raw.hoursByModel) return null;
   const out = Array.from({ length: 24 }, () => Object.fromEntries(families.map((f) => [f, 0])));
   for (const [model, counts] of Object.entries(raw.hoursByModel)) {
